@@ -1,0 +1,28 @@
+# macOS / OS metadata
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Environment & Secrets
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Dependencies & Build
+node_modules/
+.next/
+out/
+build/
+*.tsbuildinfo
+
+# IDE & Logs
+.vscode/
+.idea/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
