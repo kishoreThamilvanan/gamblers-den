@@ -57,6 +57,8 @@ export function AdminConsoleView() {
   );
   const [passcodeInput, setPasscodeInput] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [lockoutSeconds, setLockoutSeconds] = useState(0);
 
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(false);
@@ -128,17 +130,63 @@ export function AdminConsoleView() {
     };
   }, []);
 
-  const handleUnlockWithPasscode = (e: React.FormEvent) => {
+  useEffect(() => {
+    if (lockoutSeconds <= 0) return;
+    const interval = setInterval(() => {
+      setLockoutSeconds((prev) => (prev > 1 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [lockoutSeconds]);
+
+  const handleUnlockWithPasscode = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (lockoutSeconds > 0 || isVerifying) return;
     setAuthError(null);
-    const ok = verifyAdminPasscode(passcodeInput);
-    if (!ok) {
-      setAuthError('Invalid Pit Boss Passcode. Please check your credentials.');
-      return;
+    setIsVerifying(true);
+
+    try {
+      let serverOk = false;
+      try {
+        const res = await fetch('/api/admin/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            passcode: passcodeInput,
+            email: activeUser?.email,
+          }),
+        });
+
+        if (res.status === 429) {
+          const data = (await res.json().catch(() => ({}))) as { error?: string };
+          setAuthError(data.error || 'Too many failed attempts. Locked out for 60 seconds.');
+          setLockoutSeconds(60);
+          return;
+        }
+
+        if (res.ok) {
+          serverOk = true;
+        } else {
+          const data = (await res.json().catch(() => ({}))) as { error?: string };
+          setAuthError(data.error || 'Invalid Pit Boss Passcode.');
+          return;
+        }
+      } catch {
+        // Fallback to local evaluation if server route unavailable (offline/static)
+        serverOk = verifyAdminPasscode(passcodeInput, activeUser);
+      }
+
+      if (!serverOk) {
+        setAuthError('Invalid Pit Boss Passcode. Please check your credentials.');
+        return;
+      }
+
+      verifyAdminPasscode(passcodeInput, activeUser);
+      setPasscodeInput('');
+      setAuthorized(true);
+      await refreshUsers();
+    } finally {
+      setIsVerifying(false);
     }
-    setPasscodeInput('');
-    setAuthorized(true);
-    void refreshUsers();
   };
 
   const handleUnlockWithBiometrics = async () => {
@@ -168,8 +216,9 @@ export function AdminConsoleView() {
   };
 
   const handleLockAdmin = () => {
+    void fetch('/api/admin/logout', { method: 'POST' }).catch(() => {});
     lockAdminSession();
-    setAuthorized(isAdminUser(activeUser));
+    setAuthorized(false);
   };
 
   const handleSeedDemo = async () => {
@@ -499,17 +548,19 @@ export function AdminConsoleView() {
                   type="password"
                   value={passcodeInput}
                   onChange={(e) => setPasscodeInput(e.target.value)}
-                  placeholder="Enter secret Pit Boss passcode"
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-400"
+                  placeholder={lockoutSeconds > 0 ? `Locked for ${lockoutSeconds}s` : "Enter secret Pit Boss passcode"}
+                  disabled={lockoutSeconds > 0 || isVerifying}
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
                   required
                 />
               </div>
             </div>
             <button
               type="submit"
-              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-black text-xs uppercase tracking-wider transition cursor-pointer shadow-lg"
+              disabled={lockoutSeconds > 0 || isVerifying}
+              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 disabled:opacity-50 disabled:cursor-not-allowed text-black font-black text-xs uppercase tracking-wider transition cursor-pointer shadow-lg"
             >
-              Unlock Pit Boss Console
+              {isVerifying ? 'Verifying Credentials...' : lockoutSeconds > 0 ? `Locked Out (${lockoutSeconds}s)` : 'Unlock Pit Boss Console'}
             </button>
           </form>
         </div>

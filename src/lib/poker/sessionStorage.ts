@@ -1,6 +1,7 @@
 import { GameSession } from './types';
 
-const STORAGE_KEY = 'feltsense_saved_sessions';
+const STORAGE_KEY = 'gamblersden_saved_sessions';
+const LEGACY_STORAGE_KEY = 'feltsense_saved_sessions';
 export const MAX_SAVED_SESSIONS = 5;
 
 /**
@@ -9,7 +10,20 @@ export const MAX_SAVED_SESSIONS = 5;
 export function getSavedSessions(): GameSession[] {
   if (typeof window === 'undefined') return [];
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    let raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      // Legacy fallback migration
+      const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (legacy) {
+        raw = legacy;
+        try {
+          localStorage.setItem(STORAGE_KEY, legacy);
+          localStorage.removeItem(LEGACY_STORAGE_KEY);
+        } catch {
+          // ignore storage migration errors
+        }
+      }
+    }
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];

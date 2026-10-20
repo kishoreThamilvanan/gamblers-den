@@ -7,13 +7,43 @@ import {
   PasskeyCredentialMeta,
 } from '@/types/poker';
 
-const ACTIVE_USER_KEY = 'feltsense_active_user_v1';
-const ACCOUNTS_VAULT_KEY = 'feltsense_accounts_vault_v1';
-const ADMIN_UNLOCK_KEY = 'feltsense_admin_unlocked_v1';
-const ADMIN_PASSKEYS_KEY = 'feltsense_admin_passkeys_v1';
+const ACTIVE_USER_KEY = 'gamblersden_active_user_v1';
+const LEGACY_ACTIVE_USER_KEY = 'feltsense_active_user_v1';
+const ACCOUNTS_VAULT_KEY = 'gamblersden_accounts_vault_v1';
+const LEGACY_ACCOUNTS_VAULT_KEY = 'feltsense_accounts_vault_v1';
+const ADMIN_UNLOCK_KEY = 'gamblersden_admin_unlocked_v1';
+const LEGACY_ADMIN_UNLOCK_KEY = 'feltsense_admin_unlocked_v1';
+const ADMIN_PASSKEYS_KEY = 'gamblersden_admin_passkeys_v1';
+const LEGACY_ADMIN_PASSKEYS_KEY = 'feltsense_admin_passkeys_v1';
 const DEFAULT_STARTING_BANKROLL = 2000;
 const DEFAULT_ADMIN_PASSCODE = 'PITBOSS-777';
-const DEFAULT_ADMIN_EMAILS = ['admin@feltsense.com', 'kishore@feltsense.com'];
+const DEFAULT_ADMIN_EMAILS = [
+  'admin@gamblersden.com',
+  'admin@feltsense.com',
+  'kishore@gamblersden.com',
+  'kishore@feltsense.com',
+];
+
+function readStorageWithFallback(primaryKey: string, legacyKey: string): string | null {
+  if (typeof window === 'undefined' || !window.localStorage) return null;
+  try {
+    const primary = window.localStorage.getItem(primaryKey);
+    if (primary !== null) return primary;
+    const legacy = window.localStorage.getItem(legacyKey);
+    if (legacy !== null) {
+      try {
+        window.localStorage.setItem(primaryKey, legacy);
+        window.localStorage.removeItem(legacyKey);
+      } catch {
+        // ignore migration errors
+      }
+      return legacy;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 
 
@@ -114,7 +144,7 @@ function simpleHash(input: string): string {
 function getAccountsVault(): Record<string, StoredAccountRecord> {
   if (typeof window === 'undefined' || !window.localStorage) return {};
   try {
-    const raw = window.localStorage.getItem(ACCOUNTS_VAULT_KEY);
+    const raw = readStorageWithFallback(ACCOUNTS_VAULT_KEY, LEGACY_ACCOUNTS_VAULT_KEY);
     if (!raw) return {};
     return JSON.parse(raw) as Record<string, StoredAccountRecord>;
   } catch {
@@ -134,7 +164,7 @@ function saveAccountsVault(vault: Record<string, StoredAccountRecord>): void {
 export function getStoredUserProfile(): UserProfile | null {
   if (typeof window === 'undefined' || !window.localStorage) return null;
   try {
-    const raw = window.localStorage.getItem(ACTIVE_USER_KEY);
+    const raw = readStorageWithFallback(ACTIVE_USER_KEY, LEGACY_ACTIVE_USER_KEY);
     if (!raw) return null;
     return JSON.parse(raw) as UserProfile;
   } catch {
@@ -1088,7 +1118,7 @@ export function isAdminEmailWhitelisted(profile?: UserProfile | null): boolean {
 export function isAdminPasscodeUnlocked(): boolean {
   if (typeof window === 'undefined' || !window.localStorage) return false;
   try {
-    return window.localStorage.getItem(ADMIN_UNLOCK_KEY) === 'true';
+    return readStorageWithFallback(ADMIN_UNLOCK_KEY, LEGACY_ADMIN_UNLOCK_KEY) === 'true';
   } catch {
     return false;
   }
@@ -1119,6 +1149,7 @@ export function lockAdminSession(): void {
   if (typeof window === 'undefined' || !window.localStorage) return;
   try {
     window.localStorage.removeItem(ADMIN_UNLOCK_KEY);
+    window.localStorage.removeItem(LEGACY_ADMIN_UNLOCK_KEY);
   } catch {
     // ignore
   }
@@ -1886,7 +1917,7 @@ export async function signInWithPasskey(fallbackAccount?: {
 export function getAdminPasskeys(): PasskeyCredentialMeta[] {
   if (typeof window === 'undefined' || !window.localStorage) return [];
   try {
-    const raw = window.localStorage.getItem(ADMIN_PASSKEYS_KEY);
+    const raw = readStorageWithFallback(ADMIN_PASSKEYS_KEY, LEGACY_ADMIN_PASSKEYS_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? (parsed as PasskeyCredentialMeta[]) : [];
