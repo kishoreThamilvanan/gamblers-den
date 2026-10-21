@@ -23,17 +23,64 @@ export type BasicStrategyAction = 'hit' | 'stand' | 'double' | 'split' | 'surren
 
 export interface BlackjackHandState {
   id: string;
-  spotIndex: number; // 0, 1, or 2 (Spot Left, Center, Right)
+  spotIndex: number; // 0 to 4 (Spots 1 to 5)
   cards: BlackjackCard[];
   bet: number;
   isDoubled: boolean;
   isSplit: boolean;
   isSurrendered: boolean;
+  isBot?: boolean;
+  botName?: string;
+  botAvatar?: string;
   status: 'betting' | 'playing' | 'stood' | 'busted' | 'blackjack' | 'settled';
   result?: 'win' | 'loss' | 'push' | 'blackjack';
   payout?: number;
   netProfit?: number;
 }
+
+export interface BlackjackBotPersona {
+  id: string;
+  name: string;
+  nickname: string;
+  avatarUrl: string;
+  defaultBet: number;
+  bankroll: number;
+}
+
+export const BLACKJACK_BOT_PRESETS: Record<number, BlackjackBotPersona> = {
+  0: {
+    id: 'bot-vinny',
+    name: 'Vinny "The Cooler"',
+    nickname: 'The Cooler',
+    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+    defaultBet: 25,
+    bankroll: 1500,
+  },
+  1: {
+    id: 'bot-elena',
+    name: 'Elena Rostova',
+    nickname: 'Card Counter',
+    avatarUrl: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80',
+    defaultBet: 50,
+    bankroll: 2500,
+  },
+  3: {
+    id: 'bot-marcus',
+    name: 'Marcus "High Roller"',
+    nickname: 'High Roller',
+    avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
+    defaultBet: 100,
+    bankroll: 5000,
+  },
+  4: {
+    id: 'bot-sarah',
+    name: 'Sarah "Shark"',
+    nickname: 'Vegas Pro',
+    avatarUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
+    defaultBet: 50,
+    bankroll: 3000,
+  },
+};
 
 export interface DealerState {
   cards: BlackjackCard[];

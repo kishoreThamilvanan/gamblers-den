@@ -249,6 +249,26 @@ describe('Roulette Engine - Payout & Settlement Rules', () => {
     assert.strictEqual(result.totalPayout, 0);
     assert.strictEqual(result.netProfit, -150);
   });
+
+  it('French Call Bets (Voisins du Zéro) win when winning pocket is in sector', () => {
+    const pocket26 = getPocketInfo(26); // In Voisins du Zéro and Jeu Zéro
+    const bets: RouletteBet[] = [
+      {
+        id: 'call-voisins',
+        type: 'voisins',
+        label: 'Voisins du Zéro',
+        numbers: [22, 18, 29, 7, 28, 12, 35, 3, 26, 0, 32, 15, 19, 4, 21, 2, 25],
+        amount: 90,
+        payoutMultiplier: PAYOUT_RATIOS.voisins,
+      },
+    ];
+
+    const result = settleRouletteBets(pocket26, bets);
+    assert.strictEqual(result.totalWagered, 90);
+    assert.strictEqual(result.results[0].won, true);
+    assert.strictEqual(result.totalPayout, 90 + 90 * 2); // 90 + 180 = 270
+    assert.strictEqual(result.netProfit, 180);
+  });
 });
 
 describe('Roulette Engine - Statistics & History Tracking', () => {

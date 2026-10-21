@@ -110,6 +110,25 @@ body {
   animation: chip-toss 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
+@keyframes shoe-deal-flight {
+  0% {
+    opacity: 0;
+    transform: translate(45px, -30px) scale(0.65) rotate(12deg);
+  }
+  60% {
+    opacity: 1;
+    transform: translate(-3px, 2px) scale(1.04) rotate(-2deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1) rotate(0deg);
+  }
+}
+
+.animate-card-deal-flight {
+  animation: shoe-deal-flight 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
 .animate-card-muck {
   animation: card-muck 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }

@@ -79,6 +79,23 @@ export function getPocketInfo(num: PocketNumber): RoulettePocket {
 export const ALL_EUROPEAN_POCKETS: readonly RoulettePocket[] = EUROPEAN_WHEEL_ORDER.map(getPocketInfo);
 export const ALL_AMERICAN_POCKETS: readonly RoulettePocket[] = AMERICAN_WHEEL_ORDER.map(getPocketInfo);
 
+// French Racetrack Sector Definitions
+export const VOISINS_DU_ZERO: readonly PocketNumber[] = [
+  22, 18, 29, 7, 28, 12, 35, 3, 26, 0, 32, 15, 19, 4, 21, 2, 25,
+];
+
+export const TIERS_DU_CYLINDRE: readonly PocketNumber[] = [
+  27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33,
+];
+
+export const ORPHELINS: readonly PocketNumber[] = [
+  1, 20, 14, 31, 9, 17, 34, 6,
+];
+
+export const JEU_ZERO: readonly PocketNumber[] = [
+  12, 35, 3, 26, 0, 32, 15,
+];
+
 export type RouletteBetType =
   | 'straight'
   | 'split'
@@ -92,7 +109,11 @@ export type RouletteBetType =
   | 'even'
   | 'odd'
   | 'low'
-  | 'high';
+  | 'high'
+  | 'voisins'
+  | 'tiers'
+  | 'orphelins'
+  | 'jeuzero';
 
 export interface RouletteBet {
   id: string;
@@ -117,6 +138,10 @@ export const PAYOUT_RATIOS: Record<RouletteBetType, number> = {
   odd: 1,       // 1:1
   low: 1,       // 1:1
   high: 1,      // 1:1
+  voisins: 2,   // 2:1 equivalent average
+  tiers: 2,     // 2:1
+  orphelins: 4, // 4:1
+  jeuzero: 4,   // 4:1
 };
 
 export interface SettledBetResult {

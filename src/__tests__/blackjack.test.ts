@@ -251,4 +251,114 @@ describe('Blackjack Engine (Vegas Strip S17)', () => {
       assert.equal(settlement.payout, 50);
     });
   });
+
+  describe('5-Seat Scalable Table & Bot Seating Presets', () => {
+    it('defines VIP Bot presets for table spots', async () => {
+      const { BLACKJACK_BOT_PRESETS } = await import('../lib/blackjack/blackjackEngine');
+      assert.ok(BLACKJACK_BOT_PRESETS[0]);
+      assert.equal(BLACKJACK_BOT_PRESETS[0].name, 'Vinny "The Cooler"');
+      assert.ok(BLACKJACK_BOT_PRESETS[1]);
+      assert.equal(BLACKJACK_BOT_PRESETS[1].name, 'Elena Rostova');
+      assert.ok(BLACKJACK_BOT_PRESETS[3]);
+      assert.equal(BLACKJACK_BOT_PRESETS[3].name, 'Marcus "High Roller"');
+      assert.ok(BLACKJACK_BOT_PRESETS[4]);
+      assert.equal(BLACKJACK_BOT_PRESETS[4].name, 'Sarah "Shark"');
+    });
+
+    it('settles a full 5-seat table accurately with mixed hero and bot hands', () => {
+      const dealerCards: BlackjackCard[] = [
+        createCard('T', 's'),
+        createCard('8', 'h'), // Dealer 18
+      ];
+
+      const full5Hands: BlackjackHandState[] = [
+        {
+          id: 'h0',
+          spotIndex: 0,
+          cards: [createCard('T', 'c'), createCard('9', 'c')], // 19 -> Win
+          bet: 25,
+          isDoubled: false,
+          isSplit: false,
+          isSurrendered: false,
+          isBot: true,
+          botName: 'Vinny',
+          status: 'stood',
+        },
+        {
+          id: 'h1',
+          spotIndex: 1,
+          cards: [createCard('T', 'd'), createCard('8', 'd')], // 18 -> Push
+          bet: 50,
+          isDoubled: false,
+          isSplit: false,
+          isSurrendered: false,
+          isBot: true,
+          botName: 'Elena',
+          status: 'stood',
+        },
+        {
+          id: 'h2',
+          spotIndex: 2,
+          cards: [createCard('A', 'h'), createCard('K', 's')], // Blackjack -> 3:2 Win
+          bet: 100,
+          isDoubled: false,
+          isSplit: false,
+          isSurrendered: false,
+          isBot: false,
+          status: 'blackjack',
+        },
+        {
+          id: 'h3',
+          spotIndex: 3,
+          cards: [createCard('9', 's'), createCard('8', 'c')], // 17 -> Loss
+          bet: 100,
+          isDoubled: false,
+          isSplit: false,
+          isSurrendered: false,
+          isBot: true,
+          botName: 'Marcus',
+          status: 'stood',
+        },
+        {
+          id: 'h4',
+          spotIndex: 4,
+          cards: [createCard('T', 'h'), createCard('6', 's'), createCard('7', 'h')], // 23 -> Bust
+          bet: 50,
+          isDoubled: false,
+          isSplit: false,
+          isSurrendered: false,
+          isBot: true,
+          botName: 'Sarah',
+          status: 'busted',
+        },
+      ];
+
+      const settlements = full5Hands.map((h) => settleHand(h, dealerCards));
+
+      // Spot 0 (Vinny): Win (19 vs 18)
+      assert.equal(settlements[0].result, 'win');
+      assert.equal(settlements[0].netProfit, 25);
+      assert.equal(settlements[0].payout, 50);
+
+      // Spot 1 (Elena): Push (18 vs 18)
+      assert.equal(settlements[1].result, 'push');
+      assert.equal(settlements[1].netProfit, 0);
+      assert.equal(settlements[1].payout, 50);
+
+      // Spot 2 (Hero): Blackjack (Pays 3:2 on $100 -> +$150 profit, $250 payout)
+      assert.equal(settlements[2].result, 'blackjack');
+      assert.equal(settlements[2].netProfit, 150);
+      assert.equal(settlements[2].payout, 250);
+
+      // Spot 3 (Marcus): Loss (17 vs 18)
+      assert.equal(settlements[3].result, 'loss');
+      assert.equal(settlements[3].netProfit, -100);
+      assert.equal(settlements[3].payout, 0);
+
+      // Spot 4 (Sarah): Bust
+      assert.equal(settlements[4].result, 'loss');
+      assert.equal(settlements[4].netProfit, -50);
+      assert.equal(settlements[4].payout, 0);
+    });
+  });
 });
