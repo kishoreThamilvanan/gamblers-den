@@ -1,17 +1,15 @@
 'use client';
 
 import React, { useState } from 'react';
-import Link from 'next/link';
 import { usePokerStore } from '@/lib/store';
 import {
   HERO_AVATAR_PRESETS,
   isGoogleCloudAuthConfigured,
-  isAdminEmailWhitelisted,
   computeReadinessGrade,
   isProfileEligibleForPasskey,
 } from '@/lib/auth/authService';
 import {
-  X, User, Award, Coins, ShieldCheck, LogOut, Flame, Sparkles, Check, Cloud, ShieldAlert, Fingerprint, Trash2
+  X, User, Award, Coins, ShieldCheck, LogOut, Flame, Sparkles, Check, Cloud, Fingerprint, Trash2
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -522,30 +520,6 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
                 </div>
               )}
             </div>
-
-            {isAdminEmailWhitelisted(userProfile) && (
-              <div className="bg-amber-950/30 border border-amber-500/40 rounded-2xl p-4 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-xs font-extrabold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <ShieldAlert size={14} />
-                    <span>Pit Boss Owner Access Verified</span>
-                    <span className="text-[10px] font-mono bg-amber-500/20 border border-amber-500/40 px-1.5 py-0.5 rounded text-amber-200">
-                      ⌘⇧A
-                    </span>
-                  </div>
-                  <p className="text-xs text-zinc-400 mt-0.5">
-                    Inspect player stats, cohort leaks, bankrolls, and export cardroom telemetry.
-                  </p>
-                </div>
-                <Link
-                  href="/admin"
-                  onClick={onClose}
-                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-black text-xs uppercase tracking-wider whitespace-nowrap transition"
-                >
-                  Open Console
-                </Link>
-              </div>
-            )}
 
             <div className="flex items-center justify-between pt-2 border-t border-white/10">
               <span className="text-[11px] text-zinc-500">

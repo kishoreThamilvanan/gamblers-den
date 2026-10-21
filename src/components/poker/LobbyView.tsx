@@ -1,14 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
 import { usePokerStore } from '@/lib/store';
-import { isAdminEmailWhitelisted } from '@/lib/auth/authService';
 import { Card } from './Card';
 import { UserProfileModal } from './UserProfileModal';
 import {
   Play, PlusCircle, Trash2, Clock, Coins, Shield,
-  Layers, Award, Users, Sliders, Target, Zap, LogOut, User, ShieldAlert
+  Layers, Award, Users, Sliders, Target, Zap, LogOut, User
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -25,7 +23,6 @@ export function LobbyView() {
   } = usePokerStore();
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const isOwnerAdmin = isAdminEmailWhitelisted(userProfile);
 
   const formatTimestamp = (timestamp: number) => {
     const date = new Date(timestamp);
@@ -59,17 +56,6 @@ export function LobbyView() {
             <Shield className="w-3.5 h-3.5 text-[#429E68]" />
             <span>{tableConfig.tableSize}-Max • ${tableConfig.buyInAmount} Buy-In • {tableConfig.difficulty.toUpperCase()}</span>
           </div>
-
-          {isOwnerAdmin && (
-            <Link
-              href="/admin"
-              className="flex items-center gap-1.5 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 px-3 py-1.5 rounded-full text-xs font-black uppercase tracking-wider transition"
-              title="Open Pit Boss Admin Console"
-            >
-              <ShieldAlert size={13} />
-              <span>Pit Boss Console</span>
-            </Link>
-          )}
 
           {userProfile && (
             <button
