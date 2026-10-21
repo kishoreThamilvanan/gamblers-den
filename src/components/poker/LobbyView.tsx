@@ -1,12 +1,13 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { usePokerStore } from '@/lib/store';
 import { Card } from './Card';
 import { UserProfileModal } from './UserProfileModal';
 import {
   Play, PlusCircle, Trash2, Clock, Coins, Shield,
-  Layers, Award, Users, Sliders, Target, Zap, LogOut, User
+  Layers, Award, Users, Sliders, Target, Zap, LogOut, User, ArrowLeft
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -42,12 +43,20 @@ export function LobbyView() {
       {/* Top Header / Branding */}
       <header className="border-b border-white/5 bg-[#171719]/80 backdrop-blur-md px-6 sm:px-8 py-4 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-3">
+          <Link
+            href="/"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white text-xs font-semibold transition"
+            title="Return to Grand Casino Floor"
+          >
+            <ArrowLeft size={13} />
+            <span className="hidden sm:inline">Casino Floor</span>
+          </Link>
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#429E68] to-[#2A8655] flex items-center justify-center text-white font-black text-xl italic shadow-[0_0_15px_rgba(66,158,104,0.4)]">
             GD
           </div>
           <div>
-            <h1 className="text-xl font-black tracking-wider uppercase leading-none">Gambler&apos;s Den</h1>
-            <span className="text-[#429E68] text-[10px] tracking-[0.25em] font-bold uppercase">Casino Gaming &amp; Poker Training</span>
+            <h1 className="text-xl font-black tracking-wider uppercase leading-none">Texas Hold&apos;em Room</h1>
+            <span className="text-[#429E68] text-[10px] tracking-[0.25em] font-bold uppercase">Live Cardroom &bull; Gambler&apos;s Den</span>
           </div>
         </div>
 

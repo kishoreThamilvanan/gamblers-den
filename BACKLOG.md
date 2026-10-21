@@ -44,21 +44,18 @@
 ---
 
 ### 3. Casino Game Expansion: Blackjack (21)
-- **Status**: `Backlog (Phase 3 — Awaiting Design & Approval)`
+- **Status**: `Completed ✅`
 - **Summary**: Full-featured casino Blackjack table supporting standard casino rules, 3D chip betting, and real-time basic strategy training.
 - **Specification**:
   - **Game Rules**:
-    - 6-Deck continuous shoe with automated burn card.
-    - Dealer stands on soft 17 (or configurable hits soft 17).
+    - 6-Deck continuous shoe with automated burn card & cut card.
+    - Dealer stands on soft 17 (Vegas S17 rules).
     - Blackjack pays 3:2.
-    - Standard player actions: **Hit**, **Stand**, **Double Down**, **Split** (up to 3 hands), **Insurance** (pays 2:1 against dealer Ace), and **Late Surrender**.
+    - Standard player actions: **Hit**, **Stand**, **Double Down**, **Split**, and **Late Surrender**.
   - **Table Layout & UI**:
-    - Authentic semicircular casino Blackjack felt layout fitting within Gambler's Den 16:9 responsive frame.
-    - Multi-hand betting spots (play 1 to 3 hands simultaneously against the dealer).
+    - Authentic semicircular casino Blackjack felt layout fitting within Gambler's Den 16:9 responsive frame at `/blackjack`.
+    - Multi-hand betting spots (play up to 3 hands simultaneously against the dealer).
     - Physical 3D casino chip placement on betting circles with authentic chip sound synthesis.
-  - **Card Shoe & Hand Animation**:
-    - Animated card slide from shoe to player/dealer boxes.
-    - Dealer hole card peek mechanic when showing Ace or 10.
   - **AI Strategy Advisor & Counting Drills**:
     - Real-time Basic Strategy Coach overlay (recommending Hit/Stand/Double/Split based on mathematical expectation).
     - Running count & True count card counting trainer mode (Hi-Lo system).
@@ -66,29 +63,29 @@
 ---
 
 ### 4. Casino Game Expansion: European & American Roulette
-- **Status**: `Backlog (Phase 3 — Awaiting Design & Approval)`
+- **Status**: `Completed ✅`
 - **Summary**: Authentic casino Roulette simulation featuring spinning 3D wheel physics, felt betting board, and realistic payout engine.
 - **Specification**:
   - **Game Variants**:
-    - **European Roulette**: Single zero (`0`), 2.70% house edge (Recommended).
+    - **European Roulette**: Single zero (`0`), 2.70% house edge.
     - **American Roulette**: Double zero (`0` and `00`), 5.26% house edge.
   - **Interactive Felt Board Betting**:
-    - **Inside Bets**: Straight Up (35:1), Split (17:1), Street (11:1), Corner (8:1), Six Line (5:1), Trio / First Four.
+    - **Inside Bets**: Straight Up (35:1), Split (17:1), Street (11:1), Corner (8:1), Six Line (5:1).
     - **Outside Bets**: Red/Black (1:1), Even/Odd (1:1), Low (1–18) / High (19–36) (1:1), Dozens (2:1), Columns (2:1).
-    - Intuitive drag-and-drop or click-to-place chip staging with multi-denomination stacks ($1, $5, $25, $100).
-    - "Repeat Last Bet", "Double Bets", and "Clear Board" quick controls.
+    - Multi-denomination chip betting ($1, $5, $25, $100, $500).
+    - "Repeat Last Bet", "Double Bets", and "Clear Board" controls.
   - **Animated Wheel & Ball Physics**:
-    - Smooth Canvas/CSS 3D wheel spin animation with realistic ball deceleration and pocket bouncing.
-    - Multi-density Web Audio sound effects: wheel friction spin, ball bouncing against frets, and pocket drop clatter.
+    - Smooth 2D Canvas radial wheel spin with realistic ball deceleration, fret deflection, and pocket drop physics.
+    - Web Audio sound effects: wheel friction spin, ball bouncing against frets, and pocket drop clatter.
   - **Statistics & Hot/Cold Number Tracking**:
     - Recent spin history marquee with red/black/green highlights.
-    - Hot and Cold number frequencies, dozen heatmaps, and wheel sector charts.
+    - Hot and Cold number frequencies, dozen/column tracking, and color/parity distributions.
 
 ---
 
 ### 5. Multi-Game Casino Hub & Unified Bankroll
-- **Status**: `Backlog (Phase 3 — Awaiting Design & Approval)`
-- **Summary**: Top-level casino navigation hub allowing players to seamlessly switch between **Texas Hold'em Poker**, **Blackjack**, and **Roulette** while sharing a single persistent career bankroll and player profile.
+- **Status**: `Completed ✅`
+- **Summary**: Top-level casino navigation hub allowing players to seamlessly switch between **Texas Hold'em Poker** (`/poker`), **Blackjack** (`/blackjack`), and **Roulette** (`/roulette`) while sharing a single persistent career bankroll and player profile in `playerProfileStorage`.
 
 ---
 

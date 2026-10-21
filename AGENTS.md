@@ -8,9 +8,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
-# FeltSense: Core Design Principles & Engineering Constitution
+# Gambler's Den: Core Design Principles & Engineering Constitution
 
-Whenever designing, modifying, or implementing new features in **FeltSense**, you MUST strictly abide by the following principles (also documented in [`DESIGN_PRINCIPLES.md`](./DESIGN_PRINCIPLES.md)):
+Whenever designing, modifying, or implementing new features in **Gambler's Den**, you MUST strictly abide by the following principles (also documented in [`DESIGN_PRINCIPLES.md`](./DESIGN_PRINCIPLES.md)):
 
 1. **Constrained 16:9 Table Geometry & Bounded Pods**:
    - Keep the poker table inside a centered `aspect-[16/9] max-h-[82vh]` container with fixed 9-seat elliptical percentage coordinates (`SEAT_POSITIONS`).
@@ -40,4 +40,11 @@ Whenever designing, modifying, or implementing new features in **FeltSense**, yo
 7. **Product Backlog Protocol ([`BACKLOG.md`](./BACKLOG.md))**:
    - All pending feature ideas are tracked in [`BACKLOG.md`](./BACKLOG.md).
    - **NEVER** start implementing any item from `BACKLOG.md` without the user's explicit approval, design alignment, and planning sign-off.
+
+8. **Explicit User-Authorized Commit & Pre-Commit Code Sweep Protocol**:
+   - **User Authorization Only**: NEVER execute `git commit` or `git push` autonomously. Only commit or push when the user explicitly requests and approves it.
+   - **Mandatory Pre-Commit Security & SonarQube Sweep**: Before any requested commit, perform a full sweep of the codebase verifying:
+     1. **Security Vulnerabilities**: Zero OWASP / CWE vulnerabilities (no leaked secrets in client bundles, timing-safe checks, no injection vectors).
+     2. **SonarQube Quality Standards**: Clean static analysis (`npm run lint` with 0 errors/0 warnings), 100% passing tests (`npm test`), and successful production build (`npm run build`).
+     3. **PII & Secret Protection**: Zero hardcoded Personally Identifiable Information (real personal emails, phone numbers, real credentials, or unredacted user data). Never stage or commit `.env*` files or sensitive credentials.
 

@@ -51,7 +51,7 @@ export function Card({
       >
         <div className="w-full h-full border border-red-400/30 rounded-[2px] flex items-center justify-center bg-[radial-gradient(#ffffff25_1px,transparent_1px)] [background-size:4px_4px]">
           <span className="text-white/60 font-serif font-black italic text-[9px] sm:text-[11px] tracking-tighter">
-            FS
+            GD
           </span>
         </div>
       </div>

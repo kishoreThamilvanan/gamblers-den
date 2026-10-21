@@ -415,6 +415,80 @@ class SoundSystem {
     this.ambientGain = null;
     this.isAmbientPlaying = false;
   }
+
+  /**
+   * Roulette wheel ball track whirr and spin sound.
+   */
+  public playRouletteSpin() {
+    if (this.isMuted) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    const t = ctx.currentTime;
+    // White noise filtered to simulate wooden track friction
+    const bufferSize = ctx.sampleRate * 1.8;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1200, t);
+    filter.frequency.exponentialRampToValueAtTime(450, t + 1.8);
+    filter.Q.setValueAtTime(3.0, t);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(this.volume * 0.35, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 1.8);
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+
+    noise.start(t);
+    noise.stop(t + 1.85);
+  }
+
+  /**
+   * Crisp ivory ball clicking against a metal fret.
+   */
+  public playRouletteBallClick(pitchOffset: number = 0) {
+    if (this.isMuted) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1400 + pitchOffset, t);
+    osc.frequency.exponentialRampToValueAtTime(300, t + 0.025);
+
+    gain.gain.setValueAtTime(this.volume * 0.45, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.03);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.035);
+  }
+
+  /**
+   * Ball settling into pocket with rattle and thud.
+   */
+  public playRouletteDrop() {
+    if (this.isMuted) return;
+    this.playRouletteBallClick(200);
+    setTimeout(() => this.playRouletteBallClick(-150), 45);
+    setTimeout(() => this.playRouletteBallClick(50), 90);
+    setTimeout(() => this.playRouletteBallClick(-50), 140);
+  }
 }
 
 export const sound = new SoundSystem();
