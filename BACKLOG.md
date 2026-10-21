@@ -1,4 +1,4 @@
-# FeltSense Product Backlog & Feature Specifications
+# Gambler's Den Product Backlog & Feature Specifications
 
 > [!IMPORTANT]
 > **Implementation Policy**: Items in the pending backlog are **specifications only**. Do **NOT** begin implementing any pending item from this backlog without the user's explicit approval, interactive design alignment (`/grill-me`), and step-by-step planning (`/plan`).
@@ -7,98 +7,116 @@
 
 ## Pending Backlog (Awaiting Design & Approval)
 
-### 0. Authentication & Admin Console Hardening
-- **Status**: `Completed ✅`
-- **Sub-Features**:
-  - **0.a. Fix & Wire Real Google Sign-In OAuth (`Completed ✅`)**: Wired `signInWithGoogle` in [`authService.ts`](file:///Users/kishorethamilvanan/Projects/gamblers-den/felt-sense/src/lib/auth/authService.ts) to launch the official Firebase Auth Google OAuth popup (`signInWithPopup` with `GoogleAuthProvider`) when `.env.local` keys are configured, with clear diagnostic feedback if keys are missing.
-  - **0.b. Mandatory Email Verification to Play (`Completed ✅`)**: Removed anonymous Guest entry from [`AuthGateView.tsx`](file:///Users/kishorethamilvanan/Projects/gamblers-den/felt-sense/src/components/poker/AuthGateView.tsx) and [`page.tsx`](file:///Users/kishorethamilvanan/Projects/gamblers-den/felt-sense/src/app/page.tsx), added automatic Firebase `VERIFY_EMAIL` link dispatch (`sendOobCode`) on registration, and gated Lobby/Table access behind `emailVerified === true` with "I've Verified — Check Status" and "Resend Verification Email" controls.
-  - **0.c. Protect & Harden the Pit Boss / Admin Console (`Completed ✅`)**: Enforced a Strict Owner-Only Lock across [`authService.ts`](file:///Users/kishorethamilvanan/Projects/gamblers-den/felt-sense/src/lib/auth/authService.ts), [`AdminConsoleView.tsx`](file:///Users/kishorethamilvanan/Projects/gamblers-den/felt-sense/src/components/poker/AdminConsoleView.tsx), and [`AdminShortcutListener.tsx`](file:///Users/kishorethamilvanan/Projects/gamblers-den/felt-sense/src/components/poker/AdminShortcutListener.tsx) requiring **both** a signed-in verified email in `NEXT_PUBLIC_ADMIN_EMAILS` **and** secondary unlock (Passkey or Passcode), with all dev sign-in buttons, exposed email lists, and passcode hints removed.
+### 1. Vercel Deployment & Environment Configuration Checklist
+- **Status**: `Pending (Ready for Deployment Verification)`
+- **Summary**: Comprehensive verification and documentation of all required and optional environment variables for hosting Gambler's Den on Vercel.
+- **Specification**:
+  - **Required for Live Google OAuth & Email Verification**:
+    - `NEXT_PUBLIC_FIREBASE_API_KEY`: Web API key from Firebase project settings.
+    - `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`: Firebase auth domain (e.g. `your-app.firebaseapp.com`).
+    - `NEXT_PUBLIC_FIREBASE_PROJECT_ID`: Firebase project ID.
+  - **Required for Pit Boss Owner Admin Access (`/admin` & `⌘⇧A`)**:
+    - `ADMIN_EMAILS`: Server-side comma-separated owner email whitelist (e.g. `owner@example.com`).
+    - `ADMIN_PASSCODE`: Server-side secret passcode for `/api/admin/verify` (never exposed in client JS bundles).
+    - `NEXT_PUBLIC_ADMIN_EMAILS`: Client fallback whitelist (e.g. `owner@example.com`).
+    - `NEXT_PUBLIC_ADMIN_PASSCODE`: Client fallback passcode (optional, fallback to `PITBOSS-777`).
+  - **Post-Deploy Steps**:
+    - Add assigned Vercel URL (e.g. `https://gamblers-den.vercel.app`) to Firebase Console $\rightarrow$ Authentication $\rightarrow$ Settings $\rightarrow$ Authorized Domains.
 
-### 2. Multiplayer Mode
+---
+
+### 2. Real-Time Multiplayer Poker
 - **Status**: `Backlog (Phase 2 — Awaiting Design & Approval)`
-- **Summary**: Real-time multiplayer poker tables where human players can join and play together.
+- **Summary**: Live multiplayer tables allowing friends to join private rooms and play together at the exact same table in real time.
 - **Sub-Features**:
-  - **2.a. User Authentication & Player Profiles (`Completed ✅`)**: Implemented in [`authService.ts`](file:///Users/kishorethamilvanan/Projects/gamblers-den/felt-sense/src/lib/auth/authService.ts), [`AuthGateView.tsx`](file:///Users/kishorethamilvanan/Projects/gamblers-den/felt-sense/src/components/poker/AuthGateView.tsx), and [`UserProfileModal.tsx`](file:///Users/kishorethamilvanan/Projects/gamblers-den/felt-sense/src/components/poker/UserProfileModal.tsx) with Google Cloud Identity Platform / Firebase Auth + Firestore sync and zero-cost Local Vault fallback.
-  - **2.a-admin. Pit Boss Owner Admin Console (`Completed ✅`)**: Implemented at [`/admin`](file:///Users/kishorethamilvanan/Projects/gamblers-den/felt-sense/src/app/admin/page.tsx) via [`AdminConsoleView.tsx`](file:///Users/kishorethamilvanan/Projects/gamblers-den/felt-sense/src/components/poker/AdminConsoleView.tsx) with Dual-Layer Admin Access Gate (`NEXT_PUBLIC_ADMIN_EMAILS` + `NEXT_PUBLIC_ADMIN_PASSCODE`), global KPIs, ecosystem leak intelligence, player directory table, individual dossier inspector, bankroll/stat management controls, demo player seeder, and CSV/JSON export.
-  - **2.b. Private Rooms & Invite Friends (`Pending`)**: Allow logged-in users to create a private table/room and invite friends via room code / invite link to play together in real time.
-- **Remaining Multiplayer Scope**:
-  - Real-time state synchronization & server-authoritative deck dealing so hole cards remain private on the server.
-  - Private room creation, seat selection, and invite links.
+  - **2.a. User Authentication & Player Profiles (`Completed ✅`)**: Implemented in [`src/lib/auth/authService.ts`](file:///Users/kishorethamilvanan/Projects/gamblers-den/src/lib/auth/authService.ts), [`src/components/poker/AuthGateView.tsx`](file:///Users/kishorethamilvanan/Projects/gamblers-den/src/components/poker/AuthGateView.tsx), and [`src/components/poker/UserProfileModal.tsx`](file:///Users/kishorethamilvanan/Projects/gamblers-den/src/components/poker/UserProfileModal.tsx) with Google OAuth + Email verification and local vault fallback.
+  - **2.a-admin. Pit Boss Owner Admin Console (`Completed ✅`)**: Implemented at [`/admin`](file:///Users/kishorethamilvanan/Projects/gamblers-den/src/app/admin/page.tsx) via [`src/components/poker/AdminConsoleView.tsx`](file:///Users/kishorethamilvanan/Projects/gamblers-den/src/components/poker/AdminConsoleView.tsx) with server-side timing-safe verification, rate limiting, player telemetry, and CSV/JSON export.
+  - **2.b. Private Rooms & Invite Friends (`Pending`)**:
+    - Create private rooms with custom table sizes (2-Max, 6-Max, 9-Max) and custom buy-in limits.
+    - 6-character room codes and 1-click shareable invite links (`/table/[roomId]?invite=xyz`).
+  - **2.c. Server-Authoritative Dealing & Anti-Cheat Engine (`Pending`)**:
+    - Migrate deck dealing to a backend server engine (WebSockets / PartyKit / Supabase Realtime).
+    - Opponent hole cards remain on the server and are NEVER sent over the wire until Showdown (preventing browser DevTools card scraping).
+  - **2.d. Live Action Synchronization & Turn Clocks (`Pending`)**:
+    - Real-time turn timer countdown (15s–30s) with auto-check/fold on timeout.
+    - Synchronized chip toss animations, pot distributions, and chat/emoji reactions.
 
 ---
 
-## Completed Phase 1 Backlog Milestones
-
-### 1. Player & AI Difficulty Levels
-- **Status**: `Completed ✅`
-- **Implementation**:
-  - 3 selectable tiers in [`LobbyView.tsx`](file:///Users/kishorethamilvanan/Projects/gamblers-den/felt-sense/src/components/poker/LobbyView.tsx): `🐟 Friday Night Fish (Beginner)`, `🕶️ Casino Regulars (Intermediate)`, and `🦈 Vegas Sharks (Advanced)`.
-  - Dynamic bot persona pool and heuristics in [`src/lib/poker/personas.ts`](file:///Users/kishorethamilvanan/Projects/gamblers-den/felt-sense/src/lib/poker/personas.ts) and [`src/lib/store.ts`](file:///Users/kishorethamilvanan/Projects/gamblers-den/felt-sense/src/lib/store.ts).
-  - Spoiler-free AI Coach hint conceal/reveal mode in `Vegas Sharks` (`advanced`) difficulty inside [`AICoachPanel.tsx`](file:///Users/kishorethamilvanan/Projects/gamblers-den/felt-sense/src/components/poker/AICoachPanel.tsx).
-
-### 3. Configurable Single-Player Table & Buy-In Settings
-- **Status**: `Completed ✅`
-- **Implementation**:
-  - Configurable **Table Size** (`2-Max Heads-Up`, `6-Max Short-Handed`, `9-Max Full Ring`) with symmetrical elliptical seat mapping in [`src/app/page.tsx`](file:///Users/kishorethamilvanan/Projects/gamblers-den/felt-sense/src/app/page.tsx).
-  - Configurable **Buy-In Stack** (`$100 / 50 BB`, `$200 / 100 BB`, `$300 / 150 BB`, `$400 / 200 BB`).
-  - Configurable **Max Rebuys** (`0 / Freezeout`, `1 Rebuy`, `3 Rebuys`, `Unlimited`) with in-game rebuy/bust handling on the Showdown overlay.
-
-### 4.A. 3D "Blind Peeking" Hole Card Mechanic
-- **Status**: `Completed ✅`
-- **Implementation**:
-  - Default 3D Blind Peeking on Hero's hole cards (hover/touch to curl cards in 3D perspective with paper friction `playCardPeel()` and release snap `playCardSnap()`, or click to pin face-up for the current hand).
-  - Top header bar toggle (`Cards: 3D Peek` / `Cards: Face-Up`) for volume drilling.
-
-### 4.B. Pre-Action Checkbox Staging ("Auto-Fold / Check-Fold")
-- **Status**: `Completed ✅`
-- **Implementation**:
-  - Low-profile `Check / Fold`, `Check`, and `Call Any` staging bar displayed above the main action buttons when action is not on Hero.
-  - Instant execution when turn reaches Hero; automatic clearing of staged `Check` if an opponent bets or raises ahead of Hero.
-
-### 4.C. Live Pot Odds & Breakeven Equity Visualizer
-- **Status**: `Completed ✅`
-- **Implementation**:
-  - Dynamic `Requires X% Eq • Hero Y%` badge rendered in the betting console and on the `CALL $X` button whenever facing a bet, color-coded emerald when Hero's equity meets or exceeds required pot odds.
-
-### 4.D. Multi-Density Chip Sound Escalation
-- **Status**: `Completed ✅`
-- **Implementation**:
-  - `playBetByDensity(betAmount, potAmount)` in [`src/lib/sound/soundSystem.ts`](file:///Users/kishorethamilvanan/Projects/gamblers-den/felt-sense/src/lib/sound/soundSystem.ts) escalates Web Audio synthesis from a single-chip ceramic tick (`$1–$6`), to a multi-chip barrel slide (`$7–$45`), to a deep resonant sub-bass thud + scatter cascade (`$65+` or pot-sized shoves).
-
-### 5.A. Live Poker Timing Tells & Behavioral Cues
-- **Status**: `Completed ✅`
-- **Implementation**:
-  - Calling Station *Snap-Call* (`0.3s`), Nit *Hollywood Tank-Raise* (`3.5s`), and Aggro-Fish *Weakness Stab* (`0.35s`) surfaced in the Center-Felt Live Action Ticker, Dealer Log, and Hand Replayer (concealed in `Vegas Sharks` difficulty).
-
-### 5.B. "Limper Punishment" Scenario Drill Mode
-- **Status**: `Completed ✅`
-- **Implementation**:
-  - Dedicated `🎯 Limp-Punisher Drill` mode selectable from the Lobby.
-  - Deals Hero on the Button with playable isolation hands facing 1–3 limpers ahead to drill the $4\text{BB} + 1\text{BB per limper}$ formula.
-
-### 5.C. Interactive Opponent "Player Profiler" Dossiers
-- **Status**: `Completed ✅`
-- **Implementation**:
-  - Clicking any opponent avatar on the felt opens [`OpponentDossierModal.tsx`](file:///Users/kishorethamilvanan/Projects/gamblers-den/felt-sense/src/components/poker/OpponentDossierModal.tsx) with `VPIP%`, `PFR%`, `Fold to C-Bet%`, known live exploits, and direct counter-strategy.
-
-### 6.A. The End-of-Session "Blunder Ledger"
-- **Status**: `Completed ✅`
-- **Implementation**:
-  - Upgraded [`SessionStatsModal.tsx`](file:///Users/kishorethamilvanan/Projects/gamblers-den/felt-sense/src/components/poker/SessionStatsModal.tsx) featuring Live Casino Readiness Grade (`A+` through `F`), Realized Profit vs. Leak-Free `$EV`, and the Top 3 Costliest Leaks sorted by EV loss.
-
-### 6.B. Street-by-Street Hand Replayer
-- **Status**: `Completed ✅`
-- **Implementation**:
-  - Created [`HandReplayerModal.tsx`](file:///Users/kishorethamilvanan/Projects/gamblers-den/felt-sense/src/components/poker/HandReplayerModal.tsx), accessible from both the Showdown Winner Banner (`↺ Replay Hand`) and the Session Review Modal, with street-by-street playback controls, community card progression, interactive Hero equity curve, and Coach/Tell notes.
+### 3. Casino Game Expansion: Blackjack (21)
+- **Status**: `Backlog (Phase 3 — Awaiting Design & Approval)`
+- **Summary**: Full-featured casino Blackjack table supporting standard casino rules, 3D chip betting, and real-time basic strategy training.
+- **Specification**:
+  - **Game Rules**:
+    - 6-Deck continuous shoe with automated burn card.
+    - Dealer stands on soft 17 (or configurable hits soft 17).
+    - Blackjack pays 3:2.
+    - Standard player actions: **Hit**, **Stand**, **Double Down**, **Split** (up to 3 hands), **Insurance** (pays 2:1 against dealer Ace), and **Late Surrender**.
+  - **Table Layout & UI**:
+    - Authentic semicircular casino Blackjack felt layout fitting within Gambler's Den 16:9 responsive frame.
+    - Multi-hand betting spots (play 1 to 3 hands simultaneously against the dealer).
+    - Physical 3D casino chip placement on betting circles with authentic chip sound synthesis.
+  - **Card Shoe & Hand Animation**:
+    - Animated card slide from shoe to player/dealer boxes.
+    - Dealer hole card peek mechanic when showing Ace or 10.
+  - **AI Strategy Advisor & Counting Drills**:
+    - Real-time Basic Strategy Coach overlay (recommending Hit/Stand/Double/Split based on mathematical expectation).
+    - Running count & True count card counting trainer mode (Hi-Lo system).
 
 ---
 
-## Core Foundation Milestones (Reference)
-- [x] Constrained 16:9 casino table layout with 2/6/9-max symmetrical seat coordinates and Hero anchored at bottom-center.
-- [x] Strict opponent hole card hiding (`{ hidden: true }`) until Showdown.
-- [x] Physical 3D casino chip stacks (`$100` Black, `$25` Green, `$5` Red, `$1` Blue) for bankrolls, bets, and pot.
-- [x] Game speed controls (`Relaxed`, `Normal`, `Fast`) and Showdown/Fold Winner announcements.
-- [x] Proactive AI Coach with pre-action advice, equity/pot-odds HUD, and 1-click "Apply & Play".
-- [x] Multi-position docking (`Left`, `Right`, `Bottom`, `Hidden`) for AI Coach & Dealer Log with automatic screen reorganization.
-- [x] Per-player animated action badges (`RAISE`, `BET`, `CALL`, `CHECK`, `FOLDED`, `ALL-IN`), center-felt live action ticker, card mucking, and chip toss animations.
-- [x] Comprehensive automated test suite (`54` unit & state-machine tests in `src/__tests__/`).
+### 4. Casino Game Expansion: European & American Roulette
+- **Status**: `Backlog (Phase 3 — Awaiting Design & Approval)`
+- **Summary**: Authentic casino Roulette simulation featuring spinning 3D wheel physics, felt betting board, and realistic payout engine.
+- **Specification**:
+  - **Game Variants**:
+    - **European Roulette**: Single zero (`0`), 2.70% house edge (Recommended).
+    - **American Roulette**: Double zero (`0` and `00`), 5.26% house edge.
+  - **Interactive Felt Board Betting**:
+    - **Inside Bets**: Straight Up (35:1), Split (17:1), Street (11:1), Corner (8:1), Six Line (5:1), Trio / First Four.
+    - **Outside Bets**: Red/Black (1:1), Even/Odd (1:1), Low (1–18) / High (19–36) (1:1), Dozens (2:1), Columns (2:1).
+    - Intuitive drag-and-drop or click-to-place chip staging with multi-denomination stacks ($1, $5, $25, $100).
+    - "Repeat Last Bet", "Double Bets", and "Clear Board" quick controls.
+  - **Animated Wheel & Ball Physics**:
+    - Smooth Canvas/CSS 3D wheel spin animation with realistic ball deceleration and pocket bouncing.
+    - Multi-density Web Audio sound effects: wheel friction spin, ball bouncing against frets, and pocket drop clatter.
+  - **Statistics & Hot/Cold Number Tracking**:
+    - Recent spin history marquee with red/black/green highlights.
+    - Hot and Cold number frequencies, dozen heatmaps, and wheel sector charts.
+
+---
+
+### 5. Multi-Game Casino Hub & Unified Bankroll
+- **Status**: `Backlog (Phase 3 — Awaiting Design & Approval)`
+- **Summary**: Top-level casino navigation hub allowing players to seamlessly switch between **Texas Hold'em Poker**, **Blackjack**, and **Roulette** while sharing a single persistent career bankroll and player profile.
+
+---
+
+## Completed Phase 1 Backlog Milestones (Reference)
+
+### 0. Authentication & Admin Console Hardening (`Completed ✅`)
+- Real Google Sign-In OAuth popup via Firebase with diagnostic fallback.
+- Mandatory email verification to play (guest bypass eliminated).
+- Hardened Owner-Only Pit Boss Admin Console with server-side timing-safe passcode validation, brute-force rate-limiting, and Touch ID / Face ID passkeys.
+
+### 1. Player & AI Difficulty Levels (`Completed ✅`)
+- 3 tiers: `🐟 Friday Night Fish`, `🕶️ Casino Regulars`, `🦈 Vegas Sharks`.
+- Distinct persona pools with custom aggression, sizing, and timing tells.
+
+### 2. Configurable Single-Player Table & Buy-In Settings (`Completed ✅`)
+- Configurable Table Size (`2-Max`, `6-Max`, `9-Max`).
+- Configurable Buy-In Stack (`$100`, `$200`, `$300`, `$400`).
+- Configurable Max Rebuys (`Freezeout`, `1 Rebuy`, `3 Rebuys`, `Unlimited`).
+
+### 3. Visual & Audio Realism (`Completed ✅`)
+- 3D Blind Peeking hole cards with perspective curling and paper friction audio.
+- Physical 3D casino chip stacks for bets, bankrolls, and central pots.
+- Multi-density chip sound escalation synthesized via Web Audio.
+
+### 4. Advanced Poker Training Tools (`Completed ✅`)
+- Proactive AI Coach with pre-action pot odds, MDF, and 1-click "Apply & Play".
+- Pre-action checkbox staging (`Check/Fold`, `Check`, `Call Any`).
+- Limper Punishment scenario drill mode.
+- Interactive Opponent Dossier modals.
+- End-of-session Blunder Ledger and Casino Readiness grade (`A+` to `F`).
+- Street-by-street Hand Replayer with interactive equity curve.
