@@ -152,8 +152,8 @@ describe('User Authentication, Profile Identity & Career Bankroll (src/lib/auth/
     assert.equal(isAdminEmailWhitelisted(regularUser), false);
     assert.equal(isAdminUser(regularUser), false);
 
-    // Non-owner user CANNOT unlock Admin Console even if they enter the Pit Boss passcode
-    assert.equal(verifyAdminPasscode('PITBOSS-777'), false);
+    // Non-owner user CANNOT unlock Admin Console even if they enter the Pit Boss passphrase
+    assert.equal(verifyAdminPasscode('gambling of reality is more real that reality itself'), false);
     assert.equal(isAdminUser(regularUser), false);
 
     // Signing in with a whitelisted owner email passes Layer 1 (isAdminEmailWhitelisted),
@@ -169,8 +169,8 @@ describe('User Authentication, Profile Identity & Career Bankroll (src/lib/auth/
     assert.equal(verifyAdminPasscode('WRONG-CODE'), false);
     assert.equal(isAdminUser(adminUser), false);
 
-    // Correct passcode unlocks Pit Boss Console for the verified owner
-    assert.equal(verifyAdminPasscode('PITBOSS-777'), true);
+    // Correct passphrase unlocks Pit Boss Console for the verified owner
+    assert.equal(verifyAdminPasscode('gambling of reality is more real that reality itself'), true);
     assert.equal(isAdminUser(adminUser), true);
 
     // Locking session requires re-verification

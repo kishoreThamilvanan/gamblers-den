@@ -531,7 +531,7 @@ export function AdminConsoleView() {
 
               <div className="flex items-center gap-3 text-[10px] text-zinc-500 uppercase tracking-widest font-bold">
                 <div className="h-px flex-1 bg-zinc-800" />
-                <span>Or Pit Boss Passcode</span>
+                <span>Or Pit Boss Passphrase</span>
                 <div className="h-px flex-1 bg-zinc-800" />
               </div>
             </>
@@ -540,7 +540,7 @@ export function AdminConsoleView() {
           <form onSubmit={handleUnlockWithPasscode} className="space-y-3">
             <div>
               <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
-                Pit Boss Passcode
+                Pit Boss Passphrase
               </label>
               <div className="relative">
                 <KeyRound size={15} className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -548,7 +548,7 @@ export function AdminConsoleView() {
                   type="password"
                   value={passcodeInput}
                   onChange={(e) => setPasscodeInput(e.target.value)}
-                  placeholder={lockoutSeconds > 0 ? `Locked for ${lockoutSeconds}s` : "Enter secret Pit Boss passcode"}
+                  placeholder={lockoutSeconds > 0 ? `Locked for ${lockoutSeconds}s` : "Enter secret Pit Boss passphrase"}
                   disabled={lockoutSeconds > 0 || isVerifying}
                   className="w-full bg-zinc-900 border border-zinc-700 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
                   required

@@ -16,7 +16,7 @@ const LEGACY_ADMIN_UNLOCK_KEY = 'feltsense_admin_unlocked_v1';
 const ADMIN_PASSKEYS_KEY = 'gamblersden_admin_passkeys_v1';
 const LEGACY_ADMIN_PASSKEYS_KEY = 'feltsense_admin_passkeys_v1';
 const DEFAULT_STARTING_BANKROLL = 2000;
-const DEFAULT_ADMIN_PASSCODE = 'PITBOSS-777';
+const DEFAULT_ADMIN_PASSCODE = 'gambling of reality is more real that reality itself';
 const DEFAULT_ADMIN_EMAILS = [
   'admin@gamblersden.com',
   'admin@feltsense.com',

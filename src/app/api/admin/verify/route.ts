@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     const expectedPasscode = (
       process.env.ADMIN_PASSCODE ||
       process.env.NEXT_PUBLIC_ADMIN_PASSCODE ||
-      'PITBOSS-777'
+      'gambling of reality is more real that reality itself'
     ).trim();
 
     const isValid = isTimingSafeMatch(expectedPasscode, String(passcode || ''));
