@@ -4,12 +4,11 @@ import React, { useState } from 'react';
 import { usePokerStore } from '@/lib/store';
 import { 
   Sparkles, Zap, TrendingUp, 
-  PanelLeftClose, PanelRightClose, ArrowDownToLine, 
-  X, AlertTriangle, Layers, Eye
+  AlertTriangle, Layers, Eye
 } from 'lucide-react';
+import { CasinoDockPanel } from '@/components/casino/CasinoDockPanel';
 import { getProactiveAdvice, ProactiveAdvice } from '@/lib/poker/coach';
 import { LogPosition } from './DealerLogBox';
-import { clsx } from 'clsx';
 
 interface AICoachPanelProps {
   position: LogPosition;
@@ -67,85 +66,29 @@ export function AICoachPanel({
       )
     : null;
 
-  if (position === 'hidden') {
-    return (
-      <button
-        onClick={() => onPositionChange('left')}
-        className="fixed bottom-28 left-4 z-40 bg-zinc-900/90 hover:bg-zinc-800 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-full shadow-2xl flex items-center gap-1.5 text-xs font-bold transition-all hover:scale-105 cursor-pointer backdrop-blur-md"
-        title="Open AI Coach"
-      >
-        <Sparkles size={14} />
-        <span>AI Coach</span>
-      </button>
-    );
-  }
-
-  const containerClasses = clsx(
-    'bg-[#0b0e14]/95 backdrop-blur-xl border-zinc-800 text-slate-100 flex flex-col z-40 select-none font-sans transition-all duration-300 shadow-2xl',
-    position === 'right' && (isStacked ? 'fixed right-0 top-12 bottom-[48%] w-80 sm:w-88 border-l border-b' : 'fixed right-0 top-12 bottom-0 w-80 sm:w-88 border-l'),
-    position === 'left' && (isStacked ? 'fixed left-0 top-12 bottom-[48%] w-80 sm:w-88 border-r border-b' : 'fixed left-0 top-12 bottom-0 w-80 sm:w-88 border-r'),
-    position === 'bottom' && 'w-full h-full border rounded-lg',
-    className
-  );
-
   return (
-    <aside className={containerClasses}>
-      {/* Top Header & Position Selector Bar */}
-      <div className="h-10 bg-[#07090e] border-b border-zinc-800/80 px-3 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-xs">
-          <Zap size={15} className="animate-pulse text-amber-400" />
-          <span>LIVE AI COACH</span>
-          {isHeroTurn && (
-            <span className="text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.2 rounded font-mono font-bold animate-pulse">
-              YOUR TURN
-            </span>
-          )}
-        </div>
-
-        {/* Position Controls */}
-        <div className="flex items-center gap-1 border-l border-zinc-800 pl-2">
-          {position !== 'left' && (
-            <button
-              onClick={() => onPositionChange('left')}
-              className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"
-              title="Attach to Left Wall"
-            >
-              <PanelLeftClose size={13} />
-            </button>
-          )}
-
-          {position !== 'bottom' && (
-            <button
-              onClick={() => onPositionChange('bottom')}
-              className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"
-              title="Dock at Bottom"
-            >
-              <ArrowDownToLine size={13} />
-            </button>
-          )}
-
-          {position !== 'right' && (
-            <button
-              onClick={() => onPositionChange('right')}
-              className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"
-              title="Attach to Right Wall"
-            >
-              <PanelRightClose size={13} />
-            </button>
-          )}
-
-          <button
-            onClick={() => onPositionChange('hidden')}
-            className="p-1 rounded hover:bg-zinc-800 text-zinc-500 hover:text-rose-400 transition cursor-pointer ml-1"
-            title="Hide AI Coach"
-          >
-            <X size={13} />
-          </button>
-        </div>
-      </div>
-
-      {/* Main Body */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3 text-xs">
+    <CasinoDockPanel
+      position={position}
+      onPositionChange={onPositionChange}
+      isStacked={isStacked}
+      isTop={true}
+      title="Live AI Coach"
+      icon={<Zap size={15} className="animate-pulse text-amber-400" />}
+      badge={
+        isHeroTurn ? (
+          <span className="text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.2 rounded font-mono font-bold animate-pulse">
+            YOUR TURN
+          </span>
+        ) : undefined
+      }
+      floatingTrigger={{
+        label: 'AI Coach',
+        icon: <Sparkles size={14} />,
+        position: 'bottom-left',
+      }}
+      className={className}
+    >
+      <div className="space-y-3 text-xs">
         {proactiveAdvice ? (
           <>
             {/* Primary Recommendation Card */}
@@ -283,6 +226,6 @@ export function AICoachPanel({
           </ul>
         </div>
       </div>
-    </aside>
+    </CasinoDockPanel>
   );
 }

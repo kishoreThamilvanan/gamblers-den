@@ -176,9 +176,9 @@ export default function BlackjackPage() {
   const [hands, setHands] = useState<BlackjackHandState[]>([]);
   const [activeHandIndex, setActiveHandIndex] = useState<number>(0);
 
-  // Docking Positions for AI Coach & Dealer Log
+  // Docking Positions for AI Coach & Dealer Log (Coach open on left, Dealer Log accessible via corner trigger)
   const [coachPosition, setCoachPosition] = useState<LogPosition>('left');
-  const [dealerLogPosition, setDealerLogPosition] = useState<LogPosition>('right');
+  const [dealerLogPosition, setDealerLogPosition] = useState<LogPosition>('hidden');
 
   // Live Dealer Speech & Action Log
   const [logs, setLogs] = useState<BlackjackLogMessage[]>([
@@ -244,8 +244,6 @@ export default function BlackjackPage() {
 
   // Docking screen reorganization logic
   const isStacked = coachPosition === dealerLogPosition && coachPosition !== 'hidden' && coachPosition !== 'bottom';
-  const hasLeftDock = coachPosition === 'left' || dealerLogPosition === 'left';
-  const hasRightDock = coachPosition === 'right' || dealerLogPosition === 'right';
 
   // ============================================================================
   // SEATING MANAGEMENT & PRESETS
@@ -1307,14 +1305,8 @@ export default function BlackjackPage() {
         }
       />
 
-      {/* Main VIP Blackjack Table Stage (Auto-Reorganizes based on Left/Right Docked Panels) */}
-      <main
-        className={clsx(
-          'flex-1 flex flex-col items-center justify-between p-2 sm:p-4 md:p-6 max-w-6xl w-full mx-auto relative transition-all duration-300',
-          hasLeftDock && 'lg:pl-80 xl:pl-88',
-          hasRightDock && 'lg:pr-80 xl:pr-88'
-        )}
-      >
+      {/* Main VIP Blackjack Table Stage (Rock-Solid Centered Geometry without Layout Shifts) */}
+      <main className="flex-1 flex flex-col items-center justify-between p-2 sm:p-4 md:p-6 max-w-6xl w-full mx-auto relative">
         {/* Table Felt Container (Aspect ratio modeled after authentic VIP tables) */}
         <div 
           onClick={() => {

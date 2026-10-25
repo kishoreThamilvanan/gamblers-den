@@ -30,11 +30,15 @@ This document defines the non-negotiable UI/UX, gameplay, and engineering princi
 
 ---
 
-## 3. Dockable HUD Panels & Dynamic Stage Reorganization
+## 3. Unified Dockable HUD Panels & Rock-Solid Stage Geometry (`CasinoDockPanel.tsx`)
+- **Shared Standard Container**:
+  - Both the **AI Coach** and **Dealer Log** across all casino games (Texas Hold'em, Blackjack, Roulette) use the shared `CasinoDockPanel.tsx` component to ensure 100% UI and UX parity.
 - **Multi-Position Docking (`left` | `right` | `bottom` | `hidden`)**:
-  - Both the **Proactive AI Coach** (`AICoachPanel.tsx`) and **Dealer Log** (`DealerLogBox.tsx`) can be independently pinned to the Left Wall, Right Wall, Bottom Dock, or Hidden.
-- **Automatic Stage Reflow**:
-  - When a panel is pinned to the `left` or `right` wall, the main table container and bottom betting footer automatically add matching side padding (`lg:pl-80` / `lg:pr-80`) so the table centers cleanly in the remaining viewport without any overlap.
+  - Both panels can be independently pinned to the Left Wall, Right Wall, Bottom Dock, or Hidden.
+  - Floating reopen pill (`hidden`) stays docked unobtrusively in lower corners (`bottom-left` for Coach, `bottom-right` for Dealer Log).
+- **Zero Layout Shifts & Permanent Centered Stages**:
+  - Panels render as high-z-index floating/docked overlay drawers (`fixed top-[53px] bottom-0 z-40 bg-[#0b0e14]/95 backdrop-blur-xl border-white/10 shadow-2xl`).
+  - Game stages (Poker 16:9 oval table, Blackjack 5-seat felt, Roulette wheel & betting grid) remain permanently centered with rock-solid dimensions. Stage layouts never jump, resize, or squish when side panels are opened, closed, or moved.
 - **Same-Wall Vertical Split (`isStacked`)**:
   - When both AI Coach and Dealer Log are pinned to the same side wall, they automatically split the wall vertically (AI Coach on top half, Dealer Log on bottom half).
 

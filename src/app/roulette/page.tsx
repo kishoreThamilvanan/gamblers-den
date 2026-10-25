@@ -23,6 +23,7 @@ import {
   JEU_ZERO,
   settleRouletteBets,
   calculateRouletteStatistics,
+  generateSampleSpins,
   spinRoulette,
 } from '@/lib/roulette/rouletteEngine';
 import {
@@ -30,6 +31,7 @@ import {
   RouletteLogMessage,
 } from '@/components/roulette/RouletteDealerLog';
 import { RouletteAICoach } from '@/components/roulette/RouletteAICoach';
+import { RouletteReaderBoard } from '@/components/roulette/RouletteReaderBoard';
 import { LogPosition } from '@/components/blackjack/BlackjackDealerLog';
 import { TableTopBar } from '@/components/casino';
 import { RouletteLobbyView } from '@/components/roulette/RouletteLobbyView';
@@ -44,7 +46,6 @@ import {
   HelpCircle,
   X,
   Clock,
-  ShieldCheck,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -94,9 +95,9 @@ export default function RoulettePage() {
   const [bets, setBets] = useState<Record<string, RouletteBet>>({});
   const [lastBets, setLastBets] = useState<Record<string, RouletteBet>>({});
 
-  // Docking positions for AI Coach & Croupier Log
+  // Docking positions for AI Coach & Croupier Log (Coach open on left, Croupier Log accessible via corner trigger)
   const [coachPosition, setCoachPosition] = useState<LogPosition>('left');
-  const [dealerLogPosition, setDealerLogPosition] = useState<LogPosition>('right');
+  const [dealerLogPosition, setDealerLogPosition] = useState<LogPosition>('hidden');
 
   // Configurable Betting Timer: 15s, 30s, or 0 (Manual)
   const [timerDuration, setTimerDuration] = useState<15 | 30 | 0>(15);
@@ -157,8 +158,6 @@ export default function RoulettePage() {
 
   // Screen reorganization docking calculations
   const isStacked = coachPosition === dealerLogPosition && coachPosition !== 'hidden' && coachPosition !== 'bottom';
-  const hasLeftDock = coachPosition === 'left' || dealerLogPosition === 'left';
-  const hasRightDock = coachPosition === 'right' || dealerLogPosition === 'right';
 
   // Handle placing/incrementing a bet on a betting spot
   const handlePlaceBet = useCallback((
@@ -239,57 +238,173 @@ export default function RoulettePage() {
     setBets({ ...lastBets });
   }, [isSpinning, isBettingLocked, lastBets, bankroll, totalWagered, updateVaultBankroll, addLog]);
 
-  // Canvas Wheel Drawing Function with authentic mahogany finish & silver turret
+  // Hovered numbers for wheel sector/bet illumination
+  const [hoveredNumbers, setHoveredNumbers] = useState<PocketNumber[] | null>(null);
+
+  // Track resting wheel & ball angles so hover/bet changes redraw smoothly without resetting wheel orientation
+  const wheelStateRef = useRef<{ wheelAngle: number; ballAngle: number; ballRadius: number }>({
+    wheelAngle: 0,
+    ballAngle: (3 * Math.PI) / 2,
+    ballRadius: 149,
+  });
+
+  // Quick-seed 25 authentic casino spins for live reader board telemetry
+  const handleSeedSpins = useCallback(() => {
+    if (isSpinning) return;
+    const sample = generateSampleSpins(25, variant);
+    setHistory((prev) => [...sample, ...prev].slice(0, 100));
+    setLastWinningPocket(sample[0]);
+    sound.playChipSplash();
+    addLog('system', `Seeded 25 authentic ${variant === 'european' ? 'European' : 'American'} spins into Reader Board telemetry.`);
+  }, [isSpinning, variant, addLog]);
+
+  // Sets of pockets covered by active bets or current hover
+  const activeBetPocketSet = useMemo(() => {
+    const set = new Set<PocketNumber>();
+    Object.values(bets).forEach((b) => {
+      b.numbers.forEach((n) => set.add(n));
+    });
+    return set;
+  }, [bets]);
+
+  const hoveredPocketSet = useMemo(() => {
+    return new Set<PocketNumber>(hoveredNumbers ?? []);
+  }, [hoveredNumbers]);
+
+  // Cammegh-Style 3D Luxury Roulette Wheel Renderer
   const drawWheel = useCallback((
     ctx: CanvasRenderingContext2D,
     width: number,
     height: number,
     wheelAngle: number,
     ballAngle: number,
-    ballRadius: number
+    ballRadius: number,
+    isBallFast: boolean = false
   ) => {
     ctx.clearRect(0, 0, width, height);
 
     const centerX = width / 2;
     const centerY = height / 2;
-    const outerRadius = Math.min(centerX, centerY) - 8;
+    const outerRadius = Math.min(centerX, centerY) - 6;
+    const trackOuterRadius = outerRadius - 13;
+    const numberRingOuterRadius = outerRadius - 31;
+    const pocketOuterRadius = numberRingOuterRadius - 25;
+    const turretRadius = pocketOuterRadius - 26;
+
     const pockets = wheelPockets;
     const pocketCount = pockets.length;
     const pocketArc = (2 * Math.PI) / pocketCount;
 
-    // 1. Dark Mahogany Wooden Outer Rim with Specular Shading
-    const rimGrad = ctx.createRadialGradient(
-      centerX - 15,
-      centerY - 15,
-      outerRadius * 0.6,
+    ctx.save();
+
+    // =========================================================================
+    // 1. MULTI-TIERED ROSEWOOD / MAHOGANY OUTER BOWL & GOLD BEZEL
+    // =========================================================================
+    const bowlGrad = ctx.createRadialGradient(
+      centerX - 25,
+      centerY - 25,
+      outerRadius * 0.55,
       centerX,
       centerY,
       outerRadius
     );
-    rimGrad.addColorStop(0, '#4a2511');
-    rimGrad.addColorStop(0.4, '#2d1508');
-    rimGrad.addColorStop(1, '#160803');
+    bowlGrad.addColorStop(0, '#6e2612');
+    bowlGrad.addColorStop(0.45, '#421407');
+    bowlGrad.addColorStop(0.85, '#240a03');
+    bowlGrad.addColorStop(1, '#120401');
 
-    ctx.save();
     ctx.beginPath();
     ctx.arc(centerX, centerY, outerRadius, 0, 2 * Math.PI);
-    ctx.fillStyle = rimGrad;
+    ctx.fillStyle = bowlGrad;
     ctx.fill();
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = '#d4af37'; // Gold bezel border
+
+    // Outer Polished Brass Bezel
+    ctx.lineWidth = 3.5;
+    ctx.strokeStyle = '#d4af37';
     ctx.stroke();
 
-    // 2. Brass/Steel Ball Track with Inset Shadow
+    // Subtle Wood-Grain Concentric Highlight on Rosewood Lip
     ctx.beginPath();
-    ctx.arc(centerX, centerY, outerRadius - 16, 0, 2 * Math.PI);
-    ctx.lineWidth = 15;
-    ctx.strokeStyle = '#18110d';
+    ctx.arc(centerX, centerY, outerRadius - 6, 0, 2 * Math.PI);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(251, 191, 36, 0.22)';
     ctx.stroke();
 
-    // 3. Numbered Pockets Ring
-    const innerTrackRadius = outerRadius - 26;
-    const pocketBaseRadius = innerTrackRadius - 46;
+    // =========================================================================
+    // 2. SLOPED BALL TRACK & 8 BRASS DIAMOND DEFLECTORS (CANOES)
+    // =========================================================================
+    const trackGrad = ctx.createRadialGradient(
+      centerX,
+      centerY,
+      numberRingOuterRadius,
+      centerX,
+      centerY,
+      trackOuterRadius
+    );
+    trackGrad.addColorStop(0, '#140804');
+    trackGrad.addColorStop(0.5, '#2b1309');
+    trackGrad.addColorStop(1, '#110602');
 
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, trackOuterRadius, 0, 2 * Math.PI);
+    ctx.arc(centerX, centerY, numberRingOuterRadius, 0, 2 * Math.PI, true);
+    ctx.fillStyle = trackGrad;
+    ctx.fill();
+
+    // Brass Rim Lip between Outer Bowl and Sloped Track
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, trackOuterRadius, 0, 2 * Math.PI);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#b48327';
+    ctx.stroke();
+
+    // 8 Brass Diamond Ball Deflectors (Canoes) on the Sloped Track
+    const canoeRadius = (trackOuterRadius + numberRingOuterRadius) / 2;
+    for (let c = 0; c < 8; c++) {
+      const cAngle = (c * Math.PI) / 4;
+      const isRadial = c % 2 === 1;
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(cAngle);
+      ctx.translate(0, -canoeRadius);
+
+      const dLong = isRadial ? 4.5 : 8.5;
+      const dShort = isRadial ? 7.5 : 3.8;
+
+      // Drop shadow
+      ctx.beginPath();
+      ctx.moveTo(0, -dShort + 1);
+      ctx.lineTo(dLong + 1, 1);
+      ctx.lineTo(0, dShort + 1);
+      ctx.lineTo(-dLong + 1, 1);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fill();
+
+      // 3D Brass Diamond Canoe
+      const canoeGrad = ctx.createLinearGradient(-dLong, -dShort, dLong, dShort);
+      canoeGrad.addColorStop(0, '#fef08a');
+      canoeGrad.addColorStop(0.5, '#eab308');
+      canoeGrad.addColorStop(1, '#713f12');
+
+      ctx.beginPath();
+      ctx.moveTo(0, -dShort);
+      ctx.lineTo(dLong, 0);
+      ctx.lineTo(0, dShort);
+      ctx.lineTo(-dLong, 0);
+      ctx.closePath();
+      ctx.fillStyle = canoeGrad;
+      ctx.fill();
+      ctx.lineWidth = 0.8;
+      ctx.strokeStyle = '#fef9c3';
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    // =========================================================================
+    // 3. ROTATING ROTOR: OUTER NUMBER RING & INNER 3D RECESSED POCKETS
+    // =========================================================================
     ctx.save();
     ctx.translate(centerX, centerY);
     ctx.rotate(wheelAngle);
@@ -301,124 +416,278 @@ export default function RoulettePage() {
 
       const isZero = pocketId === 0 || pocketId === '00';
       const isRed = typeof pocketId === 'number' && RED_NUMBERS.includes(pocketId);
+      const isHovered = hoveredPocketSet.has(pocketId);
+      const isBetActive = activeBetPocketSet.has(pocketId);
+      const isWinning = !isSpinning && lastWinningPocket?.id === pocketId;
 
-      // Pocket background
+      // 3A. Outer Number Ring Plate
       ctx.beginPath();
-      ctx.arc(0, 0, innerTrackRadius, startAngle, endAngle);
-      ctx.arc(0, 0, pocketBaseRadius, endAngle, startAngle, true);
+      ctx.arc(0, 0, numberRingOuterRadius, startAngle, endAngle);
+      ctx.arc(0, 0, pocketOuterRadius, endAngle, startAngle, true);
       ctx.closePath();
 
       if (isZero) {
-        ctx.fillStyle = '#15803d'; // Emerald green
+        ctx.fillStyle = isHovered || isWinning ? '#16a34a' : '#15803d';
       } else if (isRed) {
-        ctx.fillStyle = '#b91c1c'; // Red
+        ctx.fillStyle = isHovered || isWinning ? '#dc2626' : '#b91c1c';
       } else {
-        ctx.fillStyle = '#18181b'; // Black
+        ctx.fillStyle = isHovered || isWinning ? '#27272a' : '#141417';
       }
       ctx.fill();
 
-      // Metal pocket fret dividing lines
-      ctx.strokeStyle = '#cbd5e1';
-      ctx.lineWidth = 1;
+      // Golden Illumination Overlay for Hovered Sector / Active Bets / Winning Pocket
+      if (isHovered || isBetActive || isWinning) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(0, 0, numberRingOuterRadius - 1, startAngle, endAngle);
+        ctx.arc(0, 0, pocketOuterRadius, endAngle, startAngle, true);
+        ctx.closePath();
+        ctx.fillStyle = isWinning
+          ? 'rgba(250, 204, 21, 0.34)'
+          : isHovered
+          ? 'rgba(250, 204, 21, 0.28)'
+          : 'rgba(245, 158, 11, 0.16)';
+        ctx.fill();
+
+        // Outer golden arc indicator
+        ctx.beginPath();
+        ctx.arc(0, 0, numberRingOuterRadius - 1.5, startAngle, endAngle);
+        ctx.lineWidth = isWinning || isHovered ? 3.2 : 2;
+        ctx.strokeStyle = isWinning ? '#fef08a' : '#fbbf24';
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Number Ring Divider Lines
+      ctx.strokeStyle = 'rgba(226, 232, 240, 0.55)';
+      ctx.lineWidth = 0.9;
       ctx.stroke();
 
-      // Pocket Number text
+      // 3B. Inner 3D Recessed Ball Pocket Well
+      ctx.beginPath();
+      ctx.arc(0, 0, pocketOuterRadius, startAngle, endAngle);
+      ctx.arc(0, 0, turretRadius, endAngle, startAngle, true);
+      ctx.closePath();
+
+      if (isZero) {
+        ctx.fillStyle = '#064e3b';
+      } else if (isRed) {
+        ctx.fillStyle = '#7f1d1d';
+      } else {
+        ctx.fillStyle = '#09090b';
+      }
+      ctx.fill();
+
+      // Raised Metallic Pocket Frets (Separators)
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(startAngle) * turretRadius, Math.sin(startAngle) * turretRadius);
+      ctx.lineTo(Math.cos(startAngle) * pocketOuterRadius, Math.sin(startAngle) * pocketOuterRadius);
+      ctx.strokeStyle = '#e2e8f0';
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+
+      // 3C. Crisp Outward-Facing Pocket Number Typography
       ctx.save();
       const midAngle = startAngle + pocketArc / 2;
-      ctx.rotate(midAngle);
+      ctx.rotate(midAngle + Math.PI / 2);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#f8fafc';
-      ctx.font = 'bold 11px sans-serif';
-      ctx.fillText(String(pocketId), 0, -(pocketBaseRadius + 23));
+      ctx.fillStyle = isWinning || isHovered ? '#fef08a' : '#f8fafc';
+      ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
+      const textRadius = (numberRingOuterRadius + pocketOuterRadius) / 2;
+      ctx.fillText(String(pocketId), 0, -textRadius);
       ctx.restore();
     }
 
-    // 4. Inner Mahogany Cone & Chrome Turret
-    const turretRadius = pocketBaseRadius;
-    const coneGrad = ctx.createRadialGradient(0, 0, 5, 0, 0, turretRadius);
-    coneGrad.addColorStop(0, '#f1f5f9'); // Chrome center
-    coneGrad.addColorStop(0.25, '#94a3b8');
-    coneGrad.addColorStop(0.65, '#3b1d0e'); // Mahogany cone
-    coneGrad.addColorStop(1, '#1e0c05');
+    // Metallic Separator Rings on Rotor
+    ctx.beginPath();
+    ctx.arc(0, 0, numberRingOuterRadius, 0, 2 * Math.PI);
+    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = '#d4af37';
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(0, 0, pocketOuterRadius, 0, 2 * Math.PI);
+    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.stroke();
+
+    // =========================================================================
+    // 4. SCULPTED 3D GOLD/BRASS & POLISHED MAHOGANY CENTER TURRET
+    // =========================================================================
+    const coneGrad = ctx.createRadialGradient(-10, -10, 4, 0, 0, turretRadius);
+    coneGrad.addColorStop(0, '#92400e');
+    coneGrad.addColorStop(0.35, '#5c1f0e');
+    coneGrad.addColorStop(0.75, '#2d0e05');
+    coneGrad.addColorStop(1, '#140502');
 
     ctx.beginPath();
     ctx.arc(0, 0, turretRadius, 0, 2 * Math.PI);
     ctx.fillStyle = coneGrad;
     ctx.fill();
-    ctx.strokeStyle = '#78350f';
-    ctx.lineWidth = 2;
+
+    // Outer Turret Brass Collar
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = '#d4af37';
     ctx.stroke();
 
-    // 8-Spoke Chrome / Brass Turret Spindle (matching reference image)
-    ctx.strokeStyle = '#e2e8f0';
-    ctx.lineWidth = 2.5;
-    for (let b = 0; b < 8; b++) {
+    // Inner Decorative Gold Ring on Cone
+    ctx.beginPath();
+    ctx.arc(0, 0, turretRadius * 0.68, 0, 2 * Math.PI);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(250, 204, 21, 0.35)';
+    ctx.stroke();
+
+    // 4 Secondary Diagonal Gold Bevel Ribs
+    for (let r = 0; r < 4; r++) {
       ctx.save();
-      ctx.rotate((b * Math.PI) / 4);
+      ctx.rotate((r * Math.PI) / 2 + Math.PI / 4);
       ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(0, turretRadius - 10);
+      ctx.moveTo(0, 18);
+      ctx.lineTo(0, turretRadius - 6);
+      ctx.lineWidth = 1.4;
+      ctx.strokeStyle = 'rgba(212, 175, 55, 0.45)';
       ctx.stroke();
       ctx.restore();
     }
 
-    // Chrome Center Finial Cap
+    // 4 Primary Sculpted 3D Brass Turret Arms with Spherical Knop Finials
+    for (let b = 0; b < 4; b++) {
+      ctx.save();
+      ctx.rotate((b * Math.PI) / 2);
+
+      const armLength = turretRadius - 12;
+
+      // Tapered 3D Brass Spindle Shaft
+      const armGrad = ctx.createLinearGradient(-4, 0, 4, 0);
+      armGrad.addColorStop(0, '#854d0e');
+      armGrad.addColorStop(0.5, '#fef08a');
+      armGrad.addColorStop(1, '#a16207');
+
+      ctx.beginPath();
+      ctx.moveTo(-3.2, 16);
+      ctx.lineTo(-1.6, armLength);
+      ctx.lineTo(1.6, armLength);
+      ctx.lineTo(3.2, 16);
+      ctx.closePath();
+      ctx.fillStyle = armGrad;
+      ctx.fill();
+
+      // 3D Spherical Brass Knop Finial at Arm Tip
+      const knopGrad = ctx.createRadialGradient(-1.5, armLength - 1.5, 0.5, 0, armLength, 5.2);
+      knopGrad.addColorStop(0, '#ffffff');
+      knopGrad.addColorStop(0.35, '#fef08a');
+      knopGrad.addColorStop(0.8, '#ca8a04');
+      knopGrad.addColorStop(1, '#713f12');
+
+      ctx.beginPath();
+      ctx.arc(0, armLength, 4.8, 0, 2 * Math.PI);
+      ctx.fillStyle = knopGrad;
+      ctx.fill();
+      ctx.lineWidth = 0.8;
+      ctx.strokeStyle = '#713f12';
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    // Tiered Central Brass & Chrome Crown Cap
+    const baseCapGrad = ctx.createRadialGradient(-4, -4, 2, 0, 0, 21);
+    baseCapGrad.addColorStop(0, '#fef08a');
+    baseCapGrad.addColorStop(0.55, '#ca8a04');
+    baseCapGrad.addColorStop(1, '#713f12');
+
     ctx.beginPath();
-    ctx.arc(0, 0, 16, 0, 2 * Math.PI);
-    ctx.fillStyle = '#f8fafc';
+    ctx.arc(0, 0, 20, 0, 2 * Math.PI);
+    ctx.fillStyle = baseCapGrad;
     ctx.fill();
-    ctx.strokeStyle = '#64748b';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#fef9c3';
     ctx.stroke();
 
-    ctx.restore(); // Restore wheel rotation
+    // Inner Crown Dome
+    const domeGrad = ctx.createRadialGradient(-3, -3, 1, 0, 0, 12);
+    domeGrad.addColorStop(0, '#ffffff');
+    domeGrad.addColorStop(0.5, '#fde047');
+    domeGrad.addColorStop(1, '#a16207');
 
-    // 5. Ball Rendering & Dynamics
+    ctx.beginPath();
+    ctx.arc(0, 0, 11, 0, 2 * Math.PI);
+    ctx.fillStyle = domeGrad;
+    ctx.fill();
+
+    ctx.restore(); // Restore rotor rotation
+
+    // =========================================================================
+    // 5. TOP 12-O'CLOCK BRASS POINTER & IVORY BALL WITH MOTION TRAIL
+    // =========================================================================
+    // Stationary 12-O'Clock Golden Pointer Indicator on Outer Lip
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY - numberRingOuterRadius + 3);
+    ctx.lineTo(centerX - 6, centerY - numberRingOuterRadius - 8);
+    ctx.lineTo(centerX + 6, centerY - numberRingOuterRadius - 8);
+    ctx.closePath();
+    ctx.fillStyle = '#fbbf24';
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = '#78350f';
+    ctx.stroke();
+    ctx.restore();
+
     if (ballRadius > 0) {
+      // Subtle Motion Trail when ball is orbiting fast
+      if (isBallFast) {
+        for (let t = 1; t <= 4; t++) {
+          const trailAngle = ballAngle - t * 0.085;
+          const tx = centerX + Math.cos(trailAngle) * ballRadius;
+          const ty = centerY + Math.sin(trailAngle) * ballRadius;
+          ctx.beginPath();
+          ctx.arc(tx, ty, Math.max(2, 5.5 - t * 0.9), 0, 2 * Math.PI);
+          ctx.fillStyle = `rgba(255, 255, 255, ${0.22 - t * 0.045})`;
+          ctx.fill();
+        }
+      }
+
       const bx = centerX + Math.cos(ballAngle) * ballRadius;
       const by = centerY + Math.sin(ballAngle) * ballRadius;
 
-      // Ball shadow
+      // Ball drop shadow
       ctx.beginPath();
-      ctx.arc(bx + 2, by + 2, 5.5, 0, 2 * Math.PI);
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.arc(bx + 2.2, by + 2.5, 5.8, 0, 2 * Math.PI);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
       ctx.fill();
 
-      // Polished Ivory Ball with specular glow
-      const ballGrad = ctx.createRadialGradient(bx - 2, by - 2, 1, bx, by, 5.5);
+      // Polished Ivory Ball with 3D Specular Highlight
+      const ballGrad = ctx.createRadialGradient(bx - 2, by - 2, 0.8, bx, by, 5.8);
       ballGrad.addColorStop(0, '#ffffff');
-      ballGrad.addColorStop(0.7, '#f8fafc');
-      ballGrad.addColorStop(1, '#94a3b8');
+      ballGrad.addColorStop(0.6, '#f8fafc');
+      ballGrad.addColorStop(0.88, '#cbd5e1');
+      ballGrad.addColorStop(1, '#64748b');
 
       ctx.beginPath();
-      ctx.arc(bx, by, 5, 0, 2 * Math.PI);
+      ctx.arc(bx, by, 5.5, 0, 2 * Math.PI);
       ctx.fillStyle = ballGrad;
       ctx.fill();
-      ctx.strokeStyle = '#cbd5e1';
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 0.8;
       ctx.stroke();
     }
 
     ctx.restore();
-  }, [wheelPockets]);
+  }, [wheelPockets, hoveredPocketSet, activeBetPocketSet, isSpinning, lastWinningPocket]);
 
-  // Initial wheel render
+  // Redraw wheel whenever variant, hover state, or active bets change while not mid-spin
   useEffect(() => {
+    if (isSpinning) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    drawWheel(
-      ctx,
-      canvas.width,
-      canvas.height,
-      0,
-      0,
-      135
-    );
-  }, [drawWheel, variant]);
+    const { wheelAngle, ballAngle, ballRadius } = wheelStateRef.current;
+    drawWheel(ctx, canvas.width, canvas.height, wheelAngle, ballAngle, ballRadius, false);
+  }, [drawWheel, variant, isSpinning]);
 
   // Spin Wheel Physics Execution
   const executeSpin = useCallback(() => {
@@ -450,13 +719,15 @@ export default function RoulettePage() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const outerRadius = canvas.width / 2 - 16;
-    const trackRadius = outerRadius - 16;
-    const pocketRadius = trackRadius - 38;
+    const outerRadius = canvas.width / 2 - 6;
+    const trackRadius = outerRadius - 22;
+    const numberRingOuterRadius = outerRadius - 31;
+    const pocketOuterRadius = numberRingOuterRadius - 25;
+    const turretRadius = pocketOuterRadius - 26;
+    const pocketSettleRadius = (pocketOuterRadius + turretRadius) / 2;
 
     let startTime: number | null = null;
     const totalDuration = 4800; // 4.8 seconds authentic casino spin
-    const initialBallSpeed = 0.092;
 
     let hasClickedFret = false;
     let hasDropped = false;
@@ -469,30 +740,58 @@ export default function RoulettePage() {
       // Deceleration curve (cubic ease-out)
       const easeOut = 1 - Math.pow(1 - progress, 3);
 
-      // Ball rotates clockwise fast, then slows down
-      const ballAngle = elapsed * initialBallSpeed * (1 - easeOut * 0.92);
-      // Wheel rotates slowly counter-clockwise
+      // Wheel rotates smoothly counter-clockwise
       const currentWheelAngle = targetWheelAngle + (1 - easeOut) * Math.PI * 4;
 
-      // Ball radius transitions from outer track into pocket
+      // Ball rotates clockwise fast on the sloped track, then drops and settles at 12 o'clock (3*PI/2)
+      let ballAngle: number;
       let currentBallRadius = trackRadius;
-      if (progress > 0.65) {
-        // Ball drops down the cone into pocket
+
+      if (progress <= 0.65) {
+        const orbitProgress = progress / 0.65;
+        const orbitEase = 1 - Math.pow(1 - orbitProgress, 2.2);
+        ballAngle = (3 * Math.PI) / 2 + orbitEase * Math.PI * 14;
+      } else {
         const dropProgress = (progress - 0.65) / 0.35;
-        currentBallRadius = trackRadius - (trackRadius - pocketRadius) * Math.sin((dropProgress * Math.PI) / 2);
+        const dropEase = 1 - Math.pow(1 - dropProgress, 2.5);
+        ballAngle = (3 * Math.PI) / 2 + (1 - dropEase) * Math.PI * 2.5;
+
+        // Subtle physical deflection bounce off diamond canoes & pocket frets
+        const canoeBounce =
+          dropProgress < 0.78
+            ? Math.sin(dropProgress * Math.PI * 9) * (1 - dropProgress) * 5.5
+            : 0;
+        currentBallRadius =
+          trackRadius -
+          (trackRadius - pocketSettleRadius) * Math.sin((dropProgress * Math.PI) / 2) +
+          canoeBounce;
 
         // Sound cues
-        if (!hasClickedFret && dropProgress > 0.3) {
+        if (!hasClickedFret && dropProgress > 0.25) {
           hasClickedFret = true;
           sound.playRouletteBallClick(120);
         }
-        if (!hasDropped && dropProgress > 0.75) {
+        if (!hasDropped && dropProgress > 0.72) {
           hasDropped = true;
           sound.playRouletteDrop();
         }
       }
 
-      drawWheel(ctx, canvas.width, canvas.height, currentWheelAngle, ballAngle, currentBallRadius);
+      wheelStateRef.current = {
+        wheelAngle: currentWheelAngle,
+        ballAngle,
+        ballRadius: currentBallRadius,
+      };
+
+      drawWheel(
+        ctx,
+        canvas.width,
+        canvas.height,
+        currentWheelAngle,
+        ballAngle,
+        currentBallRadius,
+        progress < 0.55
+      );
 
       if (progress < 1) {
         animFrameRef.current = requestAnimationFrame(animate);
@@ -820,45 +1119,99 @@ export default function RoulettePage() {
         }
       />
 
-      {/* 2. Main Game Arena (Auto-Reorganizes based on Left/Right Docked Panels) */}
-      <main
-        className={clsx(
-          'flex-1 max-w-7xl w-full mx-auto p-3 sm:p-5 flex flex-col gap-4 transition-all duration-300',
-          hasLeftDock && 'lg:pl-80 xl:pl-88',
-          hasRightDock && 'lg:pr-80 xl:pr-88'
-        )}
-      >
-        {/* Top Marquee Strip: Recent Numbers & Live Betting Status */}
-        <div className="flex items-center justify-between bg-zinc-950/70 border border-amber-900/30 rounded-xl px-3 py-2 text-xs">
-          <div className="flex items-center space-x-3">
-            <div className="flex items-center space-x-1.5 text-zinc-400 font-medium">
+      {/* 2. Main Game Arena (Rock-Solid Centered Layout without Layout Shifts) */}
+      <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-5 flex flex-col gap-4">
+        {/* Top Casino LED Totem History Strip ("Numbers Drawn") */}
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-zinc-950/90 border border-amber-500/35 rounded-2xl px-3.5 py-2 text-xs shadow-lg">
+          {/* Left: Jumbo Latest Winning Number Callout & 20-Spin Staggered Bead Road */}
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 text-amber-300 font-bold shrink-0">
               <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
-              <span>Recent Spins:</span>
+              <span className="uppercase tracking-wider text-[11px]">Numbers Drawn:</span>
             </div>
-            <div className="flex items-center space-x-1.5 overflow-x-auto py-0.5">
-              {history.length === 0 ? (
-                <span className="text-zinc-600 italic">No spins yet — place bets!</span>
-              ) : (
-                history.slice(0, 10).map((p, idx) => (
-                  <div
-                    key={`${p.id}-${idx}`}
-                    className={clsx(
-                      'w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs shadow-sm border',
-                      p.color === 'green' && 'bg-emerald-600 border-emerald-400 text-white',
-                      p.color === 'red' && 'bg-red-600 border-red-400 text-white',
-                      p.color === 'black' && 'bg-zinc-900 border-zinc-700 text-zinc-100',
-                      idx === 0 && 'ring-2 ring-amber-400 scale-105'
-                    )}
-                  >
-                    {p.label}
-                  </div>
-                ))
-              )}
-            </div>
+
+            {history.length === 0 ? (
+              <div className="flex items-center gap-2.5">
+                <span className="text-zinc-500 italic">No spins recorded yet — spin wheel or seed history</span>
+                <button
+                  type="button"
+                  onClick={handleSeedSpins}
+                  disabled={isSpinning}
+                  className="px-2 py-0.5 rounded-md bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/40 text-amber-300 font-bold text-[10px] transition cursor-pointer"
+                >
+                  + Seed 25 Spins
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2.5 overflow-x-auto py-1.5 px-1">
+                {/* Jumbo Latest Number Badge */}
+                <button
+                  type="button"
+                  disabled={isBettingLocked}
+                  onClick={() =>
+                    handlePlaceBet(
+                      `straight-${history[0].id}`,
+                      'straight',
+                      history[0].label,
+                      [history[0].id],
+                      PAYOUT_RATIOS.straight
+                    )
+                  }
+                  onMouseEnter={() => setHoveredNumbers([history[0].id])}
+                  onMouseLeave={() => setHoveredNumbers(null)}
+                  className={clsx(
+                    'px-2.5 py-1 rounded-xl font-black text-sm shadow-md border-2 flex items-center gap-1.5 shrink-0 ring-2 ring-amber-400/80 cursor-pointer transition hover:scale-105',
+                    history[0].color === 'green' && 'bg-emerald-600 border-emerald-300 text-white',
+                    history[0].color === 'red' && 'bg-red-600 border-red-300 text-white',
+                    history[0].color === 'black' && 'bg-zinc-900 border-zinc-500 text-white'
+                  )}
+                  title={`Latest Winning Number: ${history[0].label} (Click to bet)`}
+                >
+                  <span>{history[0].label}</span>
+                  <span className="text-[9px] font-mono uppercase opacity-90 hidden sm:inline">
+                    {history[0].parity ?? 'ZERO'}
+                  </span>
+                </button>
+
+                <span className="h-5 w-px bg-zinc-800 shrink-0" />
+
+                {/* 3-Lane Staggered Casino Bead Trail (Red Top, Zero Mid, Black Bottom) */}
+                <div className="flex items-center gap-1.5 py-1">
+                  {history.slice(1, 20).map((p, idx) => (
+                    <button
+                      key={`${p.id}-${idx}`}
+                      type="button"
+                      disabled={isBettingLocked}
+                      onClick={() =>
+                        handlePlaceBet(`straight-${p.id}`, 'straight', p.label, [p.id], PAYOUT_RATIOS.straight)
+                      }
+                      onMouseEnter={() => setHoveredNumbers([p.id])}
+                      onMouseLeave={() => setHoveredNumbers(null)}
+                      className={clsx(
+                        'w-6 h-6 rounded-lg flex items-center justify-center font-bold text-[11px] shadow-sm border transition hover:scale-110 shrink-0 cursor-pointer',
+                        p.color === 'green' && 'bg-emerald-700 border-emerald-400 text-white translate-y-0',
+                        p.color === 'red' && 'bg-red-700 border-red-400 text-white -translate-y-1',
+                        p.color === 'black' && 'bg-zinc-900 border-zinc-600 text-zinc-100 translate-y-1'
+                      )}
+                      title={`Spin #${history.length - 1 - idx}: ${p.label} ${p.color.toUpperCase()} (Click to bet)`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Live Croupier Timer / Status Pill */}
-          <div className="flex items-center gap-2">
+          {/* Right: Active Streak Callout & Live Croupier Timer / Status Pill */}
+          <div className="flex items-center gap-2 shrink-0">
+            {stats.currentStreak && (
+              <div className="hidden md:flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-400/40 text-amber-300 font-black text-[11px]">
+                <Flame size={12} className="text-amber-400" />
+                <span>{stats.currentStreak.label}</span>
+              </div>
+            )}
+
             {timerDuration > 0 && countdown !== null && !isSpinning && (
               <div
                 className={clsx(
@@ -897,16 +1250,16 @@ export default function RoulettePage() {
                 : 'bg-gradient-to-br from-[#0c3820] via-[#092c19] to-[#051a0e]'
             )}
           >
-            {/* Upper Table Section: Wheel (Left) + Croupier Chip Float & Accessories (Right) */}
+            {/* Upper Table Section: Cammegh 3D Luxury Wheel (Left) + Live Casino Reader Board (Right) */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-center mb-6">
-              {/* Left Head: 3D Mahogany Roulette Wheel */}
+              {/* Left Head: Cammegh-Style 3D Luxury Roulette Wheel */}
               <div className="lg:col-span-5 flex flex-col items-center justify-center relative">
-                <div className="relative w-[270px] h-[270px] sm:w-[310px] sm:h-[310px] flex items-center justify-center">
+                <div className="relative w-[285px] h-[285px] sm:w-[330px] sm:h-[330px] flex items-center justify-center">
                   <canvas
                     ref={canvasRef}
-                    width={310}
-                    height={310}
-                    className="w-full h-full drop-shadow-[0_15px_30px_rgba(0,0,0,0.9)]"
+                    width={340}
+                    height={340}
+                    className="w-full h-full drop-shadow-[0_18px_36px_rgba(0,0,0,0.92)]"
                   />
                 </div>
 
@@ -963,61 +1316,18 @@ export default function RoulettePage() {
                 )}
               </div>
 
-              {/* Right Head: Croupier Chip Float & Accessories (Matching Reference Photo) */}
-              <div className="lg:col-span-7 flex flex-col justify-center gap-3">
-                {/* Acrylic Croupier Chip Float */}
-                <div className="bg-zinc-950/70 border-2 border-amber-600/30 rounded-2xl p-3 shadow-inner relative">
-                  <div className="text-[10px] font-bold text-amber-400/90 uppercase tracking-widest mb-1.5 flex items-center justify-between">
-                    <span>Croupier Chip Bank</span>
-                    <span className="text-[9px] text-zinc-500 font-mono">Denominations $1 - $500</span>
-                  </div>
-                  {/* Vertical Grooved Chip Racks */}
-                  <div className="grid grid-cols-5 gap-2 sm:gap-3 py-1">
-                    {[
-                      { val: '$1', color: 'from-blue-600 to-blue-800 border-blue-400' },
-                      { val: '$5', color: 'from-red-600 to-red-800 border-red-400' },
-                      { val: '$25', color: 'from-emerald-600 to-emerald-800 border-emerald-400' },
-                      { val: '$100', color: 'from-zinc-900 to-zinc-950 border-amber-400 text-amber-300' },
-                      { val: '$500', color: 'from-purple-800 to-purple-950 border-purple-400' },
-                    ].map((rack, rIdx) => (
-                      <div
-                        key={rIdx}
-                        className="flex flex-col items-center bg-black/40 rounded-xl p-1.5 border border-white/5 shadow-inner"
-                      >
-                        {/* 4 Stacked Chip Edges to simulate vertical column */}
-                        <div className="space-y-0.5 w-full flex flex-col items-center">
-                          {[1, 2, 3, 4].map((chipIdx) => (
-                            <div
-                              key={chipIdx}
-                              className={clsx(
-                                'h-2 w-10 sm:w-12 rounded-sm bg-gradient-to-r border-t shadow-sm',
-                                rack.color
-                              )}
-                            />
-                          ))}
-                        </div>
-                        <span className="text-[10px] font-mono font-bold mt-1.5 text-zinc-300">
-                          {rack.val}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Table Announcement Notice */}
-                <div className="bg-black/30 border border-amber-500/20 rounded-xl px-3 py-2 flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-1.5 text-amber-200">
-                    <ShieldCheck size={14} className="text-amber-400" />
-                    <span>
-                      {isBettingLocked
-                        ? 'Rien ne va plus — No more bets permitted for this spin.'
-                        : 'Place chips on inside numbers, dozens, or the French racetrack.'}
-                    </span>
-                  </div>
-                  <span className="text-[11px] font-mono text-zinc-400 hidden sm:inline">
-                    Table Wager: <span className="text-amber-300 font-bold">${totalWagered}</span>
-                  </span>
-                </div>
+              {/* Right Head: Monte Carlo Live Telemetry & Reader Board + Compact Croupier Chip Float */}
+              <div className="lg:col-span-7 flex flex-col justify-center">
+                <RouletteReaderBoard
+                  stats={stats}
+                  bets={bets}
+                  totalWagered={totalWagered}
+                  isBettingLocked={isBettingLocked}
+                  isSpinning={isSpinning}
+                  onPlaceBet={handlePlaceBet}
+                  onSeedSpins={handleSeedSpins}
+                  onHoverNumbers={setHoveredNumbers}
+                />
               </div>
             </div>
 
@@ -1452,8 +1762,10 @@ export default function RoulettePage() {
                         PAYOUT_RATIOS.voisins
                       )
                     }
+                    onMouseEnter={() => setHoveredNumbers([...VOISINS_DU_ZERO])}
+                    onMouseLeave={() => setHoveredNumbers(null)}
                     disabled={isBettingLocked}
-                    className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-950/60 to-zinc-900 border border-amber-400/70 hover:border-amber-300 text-left flex items-center justify-between transition-all group relative"
+                    className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-950/60 to-zinc-900 border border-amber-400/70 hover:border-amber-300 text-left flex items-center justify-between transition-all group relative cursor-pointer"
                   >
                     <div>
                       <div className="text-xs font-black text-amber-300 uppercase tracking-wide">
@@ -1480,8 +1792,10 @@ export default function RoulettePage() {
                         PAYOUT_RATIOS.tiers
                       )
                     }
+                    onMouseEnter={() => setHoveredNumbers([...TIERS_DU_CYLINDRE])}
+                    onMouseLeave={() => setHoveredNumbers(null)}
                     disabled={isBettingLocked}
-                    className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-950/60 to-zinc-900 border border-amber-400/70 hover:border-amber-300 text-left flex items-center justify-between transition-all group relative"
+                    className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-950/60 to-zinc-900 border border-amber-400/70 hover:border-amber-300 text-left flex items-center justify-between transition-all group relative cursor-pointer"
                   >
                     <div>
                       <div className="text-xs font-black text-amber-300 uppercase tracking-wide">
@@ -1508,8 +1822,10 @@ export default function RoulettePage() {
                         PAYOUT_RATIOS.orphelins
                       )
                     }
+                    onMouseEnter={() => setHoveredNumbers([...ORPHELINS])}
+                    onMouseLeave={() => setHoveredNumbers(null)}
                     disabled={isBettingLocked}
-                    className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-950/60 to-zinc-900 border border-amber-400/70 hover:border-amber-300 text-left flex items-center justify-between transition-all group relative"
+                    className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-950/60 to-zinc-900 border border-amber-400/70 hover:border-amber-300 text-left flex items-center justify-between transition-all group relative cursor-pointer"
                   >
                     <div>
                       <div className="text-xs font-black text-amber-300 uppercase tracking-wide">
@@ -1536,8 +1852,10 @@ export default function RoulettePage() {
                         PAYOUT_RATIOS.jeuzero
                       )
                     }
+                    onMouseEnter={() => setHoveredNumbers([...JEU_ZERO])}
+                    onMouseLeave={() => setHoveredNumbers(null)}
                     disabled={isBettingLocked}
-                    className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-950/60 to-zinc-900 border border-amber-400/70 hover:border-amber-300 text-left flex items-center justify-between transition-all group relative"
+                    className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-950/60 to-zinc-900 border border-amber-400/70 hover:border-amber-300 text-left flex items-center justify-between transition-all group relative cursor-pointer"
                   >
                     <div>
                       <div className="text-xs font-black text-amber-300 uppercase tracking-wide">

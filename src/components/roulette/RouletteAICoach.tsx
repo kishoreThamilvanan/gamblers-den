@@ -2,9 +2,9 @@
 
 import React from 'react';
 import {
-  Sparkles, TrendingUp, AlertTriangle, ShieldCheck,
-  PanelLeftClose, PanelRightClose, ArrowDownToLine, X, BarChart2
+  Sparkles, TrendingUp, AlertTriangle, ShieldCheck, BarChart2
 } from 'lucide-react';
+import { CasinoDockPanel } from '@/components/casino/CasinoDockPanel';
 import {
   RouletteVariant,
   RouletteBet,
@@ -73,85 +73,27 @@ export function RouletteAICoach({
     }
   }
 
-  if (position === 'hidden') {
-    return (
-      <button
-        onClick={() => onPositionChange('left')}
-        className="fixed bottom-12 right-4 z-40 bg-zinc-900/90 hover:bg-zinc-800 text-amber-400 border border-amber-500/30 px-3 py-1.5 rounded-full shadow-2xl flex items-center gap-1.5 text-xs font-bold transition-all hover:scale-105 cursor-pointer backdrop-blur-md"
-        title="Open AI Odds Coach"
-      >
-        <Sparkles size={14} />
-        <span>AI Coach</span>
-      </button>
-    );
-  }
-
-  const containerClasses = clsx(
-    'bg-[#0c0d14]/95 backdrop-blur-xl border-zinc-800 text-slate-100 flex flex-col z-40 select-none font-sans transition-all duration-300 shadow-2xl',
-    position === 'right' && (isStacked ? 'fixed right-0 top-14 h-[46%] w-80 sm:w-88 border-l border-b' : 'fixed right-0 top-14 bottom-0 w-80 sm:w-88 border-l'),
-    position === 'left' && (isStacked ? 'fixed left-0 top-14 h-[46%] w-80 sm:w-88 border-r border-b' : 'fixed left-0 top-14 bottom-0 w-80 sm:w-88 border-r'),
-    position === 'bottom' && 'w-full h-full border rounded-lg',
-    className
-  );
-
   return (
-    <aside className={containerClasses}>
-      {/* Top Header & Docking Bar */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800/80 bg-zinc-950/60">
-        <div className="flex items-center space-x-2">
-          <Sparkles className="w-4 h-4 text-amber-400" />
-          <span className="text-xs font-bold tracking-wider uppercase text-amber-300">
-            AI Probability Coach
-          </span>
-          <span className="text-[10px] bg-amber-950 text-amber-300 px-1.5 py-0.2 rounded-full font-semibold border border-amber-800/50">
-            {variant === 'european' ? 'European 2.7%' : 'American 5.3%'}
-          </span>
-        </div>
-
-        {/* Position selectors */}
-        <div className="flex items-center space-x-1">
-          <button
-            onClick={() => onPositionChange('left')}
-            className={clsx(
-              'p-1 rounded hover:bg-zinc-800 transition',
-              position === 'left' ? 'text-amber-400' : 'text-zinc-400 hover:text-zinc-200'
-            )}
-            title="Dock to Left"
-          >
-            <PanelLeftClose size={13} />
-          </button>
-          <button
-            onClick={() => onPositionChange('right')}
-            className={clsx(
-              'p-1 rounded hover:bg-zinc-800 transition',
-              position === 'right' ? 'text-amber-400' : 'text-zinc-400 hover:text-zinc-200'
-            )}
-            title="Dock to Right"
-          >
-            <PanelRightClose size={13} />
-          </button>
-          <button
-            onClick={() => onPositionChange('bottom')}
-            className={clsx(
-              'p-1 rounded hover:bg-zinc-800 transition',
-              position === 'bottom' ? 'text-amber-400' : 'text-zinc-400 hover:text-zinc-200'
-            )}
-            title="Dock to Bottom"
-          >
-            <ArrowDownToLine size={13} />
-          </button>
-          <button
-            onClick={() => onPositionChange('hidden')}
-            className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-rose-400 transition"
-            title="Hide Coach"
-          >
-            <X size={13} />
-          </button>
-        </div>
-      </div>
-
-      {/* Coach Content */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3 text-xs">
+    <CasinoDockPanel
+      position={position}
+      onPositionChange={onPositionChange}
+      isStacked={isStacked}
+      isTop={true}
+      title="AI Probability Coach"
+      icon={<Sparkles className="w-4 h-4 text-amber-400" />}
+      badge={
+        <span className="text-[10px] bg-amber-950 text-amber-300 px-1.5 py-0.2 rounded-full font-semibold border border-amber-800/50">
+          {variant === 'european' ? 'European 2.7%' : 'American 5.3%'}
+        </span>
+      }
+      floatingTrigger={{
+        label: 'AI Coach',
+        icon: <Sparkles size={14} />,
+        position: 'bottom-left',
+      }}
+      className={className}
+    >
+      <div className="space-y-3 text-xs">
         {/* 1. Wheel Coverage Meter */}
         <div className="bg-gradient-to-b from-amber-950/40 to-zinc-900 border border-amber-600/40 rounded-xl p-3 shadow-lg">
           <div className="flex items-center justify-between mb-2">
@@ -248,6 +190,6 @@ export function RouletteAICoach({
           <div>&bull; Keep individual spin wagers under 3% of your career bankroll.</div>
         </div>
       </div>
-    </aside>
+    </CasinoDockPanel>
   );
 }

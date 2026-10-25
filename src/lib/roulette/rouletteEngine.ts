@@ -227,6 +227,12 @@ export function spinRoulette(
   return getPocketInfo(pockets[pocketIndex]);
 }
 
+export interface RouletteStreakInfo {
+  label: string;
+  type: 'red' | 'black' | 'green' | 'even' | 'odd' | 'low' | 'high';
+  count: number;
+}
+
 /**
  * Statistical tracking summary for past spins
  */
@@ -242,14 +248,49 @@ export interface RouletteStatistics {
   evenPercentage: number;
   oddCount: number;
   oddPercentage: number;
+  lowCount: number;
+  lowPercentage: number;
+  highCount: number;
+  highPercentage: number;
   dozen1Count: number;
+  dozen1Percentage: number;
   dozen2Count: number;
+  dozen2Percentage: number;
   dozen3Count: number;
+  dozen3Percentage: number;
   column1Count: number;
+  column1Percentage: number;
   column2Count: number;
+  column2Percentage: number;
   column3Count: number;
+  column3Percentage: number;
+  voisinsCount: number;
+  voisinsPercentage: number;
+  tiersCount: number;
+  tiersPercentage: number;
+  orphelinsCount: number;
+  orphelinsPercentage: number;
+  jeuzeroCount: number;
+  jeuzeroPercentage: number;
+  currentStreak: RouletteStreakInfo | null;
   hotNumbers: { pocket: PocketNumber; count: number }[];
   coldNumbers: { pocket: PocketNumber; count: number }[];
+}
+
+/**
+ * Generates a batch of realistic sample spins for quick telemetry seeding
+ */
+export function generateSampleSpins(
+  count: number = 25,
+  variant: RouletteVariant = 'european',
+  seedStart?: number
+): RoulettePocket[] {
+  const results: RoulettePocket[] = [];
+  for (let i = 0; i < count; i++) {
+    const seed = seedStart !== undefined ? seedStart + i * 17 : undefined;
+    results.push(spinRoulette(variant, seed));
+  }
+  return results;
 }
 
 export function calculateRouletteStatistics(
@@ -270,12 +311,31 @@ export function calculateRouletteStatistics(
       evenPercentage: 0,
       oddCount: 0,
       oddPercentage: 0,
+      lowCount: 0,
+      lowPercentage: 0,
+      highCount: 0,
+      highPercentage: 0,
       dozen1Count: 0,
+      dozen1Percentage: 0,
       dozen2Count: 0,
+      dozen2Percentage: 0,
       dozen3Count: 0,
+      dozen3Percentage: 0,
       column1Count: 0,
+      column1Percentage: 0,
       column2Count: 0,
+      column2Percentage: 0,
       column3Count: 0,
+      column3Percentage: 0,
+      voisinsCount: 0,
+      voisinsPercentage: 0,
+      tiersCount: 0,
+      tiersPercentage: 0,
+      orphelinsCount: 0,
+      orphelinsPercentage: 0,
+      jeuzeroCount: 0,
+      jeuzeroPercentage: 0,
+      currentStreak: null,
       hotNumbers: [],
       coldNumbers: [],
     };
@@ -286,12 +346,18 @@ export function calculateRouletteStatistics(
   let greenCount = 0;
   let evenCount = 0;
   let oddCount = 0;
+  let lowCount = 0;
+  let highCount = 0;
   let dozen1Count = 0;
   let dozen2Count = 0;
   let dozen3Count = 0;
   let column1Count = 0;
   let column2Count = 0;
   let column3Count = 0;
+  let voisinsCount = 0;
+  let tiersCount = 0;
+  let orphelinsCount = 0;
+  let jeuzeroCount = 0;
 
   const frequencyMap: Map<PocketNumber, number> = new Map();
   const allPockets = variant === 'european' ? EUROPEAN_WHEEL_ORDER : AMERICAN_WHEEL_ORDER;
@@ -305,6 +371,9 @@ export function calculateRouletteStatistics(
     if (pocket.parity === 'even') evenCount++;
     else if (pocket.parity === 'odd') oddCount++;
 
+    if (pocket.range === 'low') lowCount++;
+    else if (pocket.range === 'high') highCount++;
+
     if (pocket.dozen === 1) dozen1Count++;
     else if (pocket.dozen === 2) dozen2Count++;
     else if (pocket.dozen === 3) dozen3Count++;
@@ -313,8 +382,65 @@ export function calculateRouletteStatistics(
     else if (pocket.column === 2) column2Count++;
     else if (pocket.column === 3) column3Count++;
 
+    if (VOISINS_DU_ZERO.includes(pocket.id)) voisinsCount++;
+    if (TIERS_DU_CYLINDRE.includes(pocket.id)) tiersCount++;
+    if (ORPHELINS.includes(pocket.id)) orphelinsCount++;
+    if (JEU_ZERO.includes(pocket.id)) jeuzeroCount++;
+
     frequencyMap.set(pocket.id, (frequencyMap.get(pocket.id) || 0) + 1);
   });
+
+  // Detect active streak from newest spins (index 0 is newest)
+  let currentStreak: RouletteStreakInfo | null = null;
+  if (history.length >= 2) {
+    const first = history[0];
+    // Color streak
+    let colorRun = 1;
+    for (let i = 1; i < history.length; i++) {
+      if (history[i].color === first.color) colorRun++;
+      else break;
+    }
+
+    // Parity streak
+    let parityRun = 0;
+    if (first.parity) {
+      parityRun = 1;
+      for (let i = 1; i < history.length; i++) {
+        if (history[i].parity === first.parity) parityRun++;
+        else break;
+      }
+    }
+
+    // Range streak
+    let rangeRun = 0;
+    if (first.range) {
+      rangeRun = 1;
+      for (let i = 1; i < history.length; i++) {
+        if (history[i].range === first.range) rangeRun++;
+        else break;
+      }
+    }
+
+    if (colorRun >= 2 && colorRun >= parityRun && colorRun >= rangeRun) {
+      currentStreak = {
+        label: `${colorRun}x ${first.color.toUpperCase()} STREAK`,
+        type: first.color,
+        count: colorRun,
+      };
+    } else if (parityRun >= 2 && parityRun >= rangeRun && first.parity) {
+      currentStreak = {
+        label: `${parityRun}x ${first.parity.toUpperCase()} STREAK`,
+        type: first.parity,
+        count: parityRun,
+      };
+    } else if (rangeRun >= 2 && first.range) {
+      currentStreak = {
+        label: `${rangeRun}x ${first.range === 'low' ? '1-18' : '19-36'} STREAK`,
+        type: first.range,
+        count: rangeRun,
+      };
+    }
+  }
 
   const sortedFrequencies = Array.from(frequencyMap.entries())
     .map(([pocket, count]) => ({ pocket, count }))
@@ -323,24 +449,45 @@ export function calculateRouletteStatistics(
   const hotNumbers = sortedFrequencies.slice(0, 5);
   const coldNumbers = [...sortedFrequencies].reverse().slice(0, 5);
 
+  const pct = (count: number) => Math.round((count / totalSpins) * 100);
+
   return {
     totalSpins,
     redCount,
-    redPercentage: Math.round((redCount / totalSpins) * 100),
+    redPercentage: pct(redCount),
     blackCount,
-    blackPercentage: Math.round((blackCount / totalSpins) * 100),
+    blackPercentage: pct(blackCount),
     greenCount,
-    greenPercentage: Math.round((greenCount / totalSpins) * 100),
+    greenPercentage: pct(greenCount),
     evenCount,
-    evenPercentage: Math.round((evenCount / totalSpins) * 100),
+    evenPercentage: pct(evenCount),
     oddCount,
-    oddPercentage: Math.round((oddCount / totalSpins) * 100),
+    oddPercentage: pct(oddCount),
+    lowCount,
+    lowPercentage: pct(lowCount),
+    highCount,
+    highPercentage: pct(highCount),
     dozen1Count,
+    dozen1Percentage: pct(dozen1Count),
     dozen2Count,
+    dozen2Percentage: pct(dozen2Count),
     dozen3Count,
+    dozen3Percentage: pct(dozen3Count),
     column1Count,
+    column1Percentage: pct(column1Count),
     column2Count,
+    column2Percentage: pct(column2Count),
     column3Count,
+    column3Percentage: pct(column3Count),
+    voisinsCount,
+    voisinsPercentage: pct(voisinsCount),
+    tiersCount,
+    tiersPercentage: pct(tiersCount),
+    orphelinsCount,
+    orphelinsPercentage: pct(orphelinsCount),
+    jeuzeroCount,
+    jeuzeroPercentage: pct(jeuzeroCount),
+    currentStreak,
     hotNumbers,
     coldNumbers,
   };

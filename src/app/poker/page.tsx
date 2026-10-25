@@ -593,12 +593,8 @@ export default function Home() {
         }
       />
 
-      {/* Main Game Stage (Auto-Reorganizes based on Left/Right Docked Panels) */}
-      <div className={clsx(
-        'flex-1 relative flex items-center justify-center p-2 sm:p-4 overflow-hidden transition-all duration-300',
-        (coachPosition === 'left' || logPosition === 'left') && 'lg:pl-80 xl:pl-88',
-        (coachPosition === 'right' || logPosition === 'right') && 'lg:pr-80 xl:pr-88'
-      )}>
+      {/* Main Game Stage (Rock-Solid Centered Geometry without Layout Shifts) */}
+      <div className="flex-1 relative flex items-center justify-center p-2 sm:p-4 overflow-hidden">
         
         {/* Table Stage Container with Aspect Ratio Enforcement */}
         <div className="relative w-full max-w-6xl aspect-[16/9] max-h-[82vh] flex items-center justify-center">
@@ -1151,55 +1147,24 @@ export default function Home() {
 
         </div>
 
-        {/* Wall-Docked / Floating AI Coach Panel */}
-        {coachPosition !== 'bottom' && (
-          <AICoachPanel
-            position={coachPosition}
-            onPositionChange={setCoachPosition}
-            onApplyAdvice={handleApplyAdvice}
-            isStacked={coachPosition === logPosition && (coachPosition === 'left' || coachPosition === 'right')}
-          />
-        )}
+        {/* Dockable AI Coach Panel */}
+        <AICoachPanel
+          position={coachPosition}
+          onPositionChange={setCoachPosition}
+          onApplyAdvice={handleApplyAdvice}
+          isStacked={coachPosition === logPosition && (coachPosition === 'left' || coachPosition === 'right')}
+        />
 
-        {/* Wall-Docked / Floating Dealer Log Panel */}
-        {logPosition !== 'bottom' && (
-          <DealerLogBox
-            position={logPosition}
-            onPositionChange={setLogPosition}
-            isStacked={coachPosition === logPosition && (logPosition === 'left' || logPosition === 'right')}
-          />
-        )}
-
+        {/* Dockable Dealer Log Panel */}
+        <DealerLogBox
+          position={logPosition}
+          onPositionChange={setLogPosition}
+          isStacked={coachPosition === logPosition && (logPosition === 'left' || logPosition === 'right')}
+        />
       </div>
 
-      {/* Bottom Betting Console & Optional Docked Panels */}
-      <footer className={clsx(
-        'h-28 bg-[#0a0d13] border-t border-zinc-800 px-4 py-2 flex items-center justify-center gap-4 z-30 shrink-0 transition-all duration-300',
-        (coachPosition === 'left' || logPosition === 'left') && 'lg:pl-84 xl:pl-92',
-        (coachPosition === 'right' || logPosition === 'right') && 'lg:pr-84 xl:pr-92'
-      )}>
-        
-        {/* Optional Bottom-Docked Dealer Log */}
-        {logPosition === 'bottom' && (
-          <div className="hidden lg:flex w-80 h-full shrink-0">
-            <DealerLogBox
-              position="bottom"
-              onPositionChange={setLogPosition}
-            />
-          </div>
-        )}
-
-        {/* Optional Bottom-Docked AI Coach */}
-        {coachPosition === 'bottom' && (
-          <div className="hidden lg:flex w-80 h-full shrink-0">
-            <AICoachPanel
-              position="bottom"
-              onPositionChange={setCoachPosition}
-              onApplyAdvice={handleApplyAdvice}
-            />
-          </div>
-        )}
-
+      {/* Bottom Betting Console */}
+      <footer className="h-28 bg-[#0a0d13] border-t border-zinc-800 px-4 py-2 flex items-center justify-center gap-4 z-30 shrink-0">
         {/* Betting Action Controls OR Showdown Hand Realization Action Bar */}
         <div className="flex-1 max-w-3xl flex flex-col justify-between h-full py-0.5">
           {phase === 'SHOWDOWN' ? (

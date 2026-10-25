@@ -10,6 +10,7 @@ import {
   BLACK_NUMBERS,
   settleRouletteBets,
   calculateRouletteStatistics,
+  generateSampleSpins,
   spinRoulette,
   RouletteBet,
   PAYOUT_RATIOS,
@@ -296,7 +297,41 @@ describe('Roulette Engine - Statistics & History Tracking', () => {
     const stats = calculateRouletteStatistics([], 'european');
     assert.strictEqual(stats.totalSpins, 0);
     assert.strictEqual(stats.redCount, 0);
+    assert.strictEqual(stats.lowPercentage, 0);
+    assert.strictEqual(stats.dozen1Percentage, 0);
+    assert.strictEqual(stats.voisinsPercentage, 0);
+    assert.strictEqual(stats.currentStreak, null);
     assert.strictEqual(stats.hotNumbers.length, 0);
+  });
+
+  it('Computes Reader Board percentages (Low/High, Dozens, Columns, Wheel Sectors) and Active Streaks', () => {
+    const history = [
+      getPocketInfo(32), // Red, Even, High (19-36), Dozen 3, Col 2, Voisins & Jeu Zero
+      getPocketInfo(19), // Red, Odd, High (19-36), Dozen 2, Col 1, Voisins
+      getPocketInfo(25), // Red, Odd, High (19-36), Dozen 3, Col 1, Voisins
+      getPocketInfo(27), // Red, Odd, High (19-36), Dozen 3, Col 3, Tiers
+    ];
+
+    const stats = calculateRouletteStatistics(history, 'european');
+    assert.strictEqual(stats.totalSpins, 4);
+    assert.strictEqual(stats.redPercentage, 100);
+    assert.strictEqual(stats.highPercentage, 100);
+    assert.strictEqual(stats.lowPercentage, 0);
+    assert.strictEqual(stats.dozen3Percentage, 75); // 3 of 4 in 3rd dozen
+    assert.strictEqual(stats.column1Percentage, 50); // 19 and 25 in Col 1
+    assert.strictEqual(stats.voisinsPercentage, 75); // 32, 19, 25 in Voisins
+    assert.strictEqual(stats.tiersPercentage, 25); // 27 in Tiers
+    assert.ok(stats.currentStreak);
+    assert.strictEqual(stats.currentStreak.type, 'red');
+    assert.strictEqual(stats.currentStreak.count, 4);
+  });
+
+  it('Generates seeded sample spins for quick Reader Board telemetry population', () => {
+    const sample = generateSampleSpins(25, 'european', 100);
+    assert.strictEqual(sample.length, 25);
+    sample.forEach((p) => {
+      assert.ok(EUROPEAN_WHEEL_ORDER.includes(p.id));
+    });
   });
 });
 

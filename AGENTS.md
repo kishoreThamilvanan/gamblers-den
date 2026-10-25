@@ -21,10 +21,10 @@ Whenever designing, modifying, or implementing new features in **Gambler's Den**
    - **Opponent Card Privacy**: Opponents' hole cards MUST stay face-down (`{ hidden: true }`) during `PREFLOP`, `FLOP`, `TURN`, and `RIVER`, revealing only at `SHOWDOWN` if `!player.hasFolded`.
    - **Physical 3D Chip Stacks (`ChipStack.tsx`)**: Render bankroll chip stacks (`mode="bankroll"`), active street bets (`mode="bet"`), and central pot stacks using authentic `$100` Black, `$25` Green, `$5` Red, and `$1` Blue casino chips.
 
-3. **Multi-Position Docking & Automatic Screen Reorganization**:
-   - Both **AI Coach** (`AICoachPanel.tsx`) and **Dealer Log** (`DealerLogBox.tsx`) must support `left`, `right`, `bottom`, and `hidden` docking.
-   - Dynamically pad the main table stage and bottom footer (`lg:pl-80` / `lg:pr-80`) when panels are docked to a side wall so the table never overlaps with side panels.
-   - Automatically split the wall vertically (`isStacked`) when both panels are docked to the same wall.
+3. **Unified Multi-Position Docking & Rock-Solid Stage Geometry (`CasinoDockPanel.tsx`)**:
+   - Both **AI Coach** and **Dealer Log** across all games (Poker, Blackjack, Roulette) MUST use the shared `CasinoDockPanel.tsx` container supporting `left`, `right`, `bottom`, and `hidden` docking.
+   - **Zero Layout Shifts & Permanent Centered Stages**: Panels render as floating/docked high-z-index overlays (`fixed top-[53px] bottom-0 z-40 bg-[#0b0e14]/95 backdrop-blur-xl border-white/10 shadow-2xl`). Main game stages (Poker 16:9 table, Blackjack 5-seat table, Roulette arena) must NEVER shrink, squish, or shift padding when panels open, close, or switch positions.
+   - Automatically split the wall vertically (`isStacked`) when both panels are docked to the same wall. Bottom dock slides up as a centered drawer (`position === 'bottom'`), and hidden panels expose floating reopen pills in lower corners.
 
 4. **Visual Action Callouts, Pacing & Winner Clarity**:
    - Show color-coded, animated action badges (`animate-action-pop`: `RAISE $X`, `BET $X`, `CALL $X`, `CHECK`, `FOLDED`, `ALL-IN $X`, `SB $1`, `BB $2`), active bot thinking indicators (`💭 THINKING...`), a center-felt live action ticker (`animate-ticker-slide`), card mucking (`animate-card-muck`), and chip toss (`animate-chip-toss`) animations.

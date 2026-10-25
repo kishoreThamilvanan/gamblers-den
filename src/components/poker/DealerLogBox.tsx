@@ -3,9 +3,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { usePokerStore } from '@/lib/store';
 import { 
-  MessageSquare, ShieldAlert, BarChart2, X, 
-  PanelLeftClose, PanelRightClose, ArrowDownToLine
+  MessageSquare, ShieldAlert, BarChart2
 } from 'lucide-react';
+import { CasinoDockPanel } from '@/components/casino/CasinoDockPanel';
 import { clsx } from 'clsx';
 
 export type LogPosition = 'right' | 'left' | 'bottom' | 'hidden';
@@ -34,117 +34,29 @@ export function DealerLogBox({
     }
   }, [logs, activeTab]);
 
-  if (position === 'hidden') {
-    return (
-      <button
-        onClick={() => onPositionChange('right')}
-        className="fixed bottom-28 right-4 z-40 bg-zinc-900/90 hover:bg-zinc-800 text-amber-400 border border-amber-500/30 px-3 py-1.5 rounded-full shadow-2xl flex items-center gap-1.5 text-xs font-bold transition-all hover:scale-105 cursor-pointer backdrop-blur-md"
-        title="Open Dealer Log"
-      >
-        <MessageSquare size={14} />
-        <span>Dealer Log</span>
-      </button>
-    );
-  }
-
-  const containerClasses = clsx(
-    'bg-[#0b0e14]/95 backdrop-blur-xl border-zinc-800 text-slate-100 flex flex-col z-40 select-none font-sans transition-all duration-300 shadow-2xl',
-    position === 'right' && (isStacked ? 'fixed right-0 top-[52%] bottom-0 w-80 sm:w-88 border-l border-t' : 'fixed right-0 top-12 bottom-0 w-80 sm:w-88 border-l'),
-    position === 'left' && (isStacked ? 'fixed left-0 top-[52%] bottom-0 w-80 sm:w-88 border-r border-t' : 'fixed left-0 top-12 bottom-0 w-80 sm:w-88 border-r'),
-    position === 'bottom' && 'w-full h-full border rounded-lg',
-    className
-  );
-
   return (
-    <aside className={containerClasses}>
-      {/* Top Header & Position Selector Bar */}
-      <div className="h-10 bg-[#07090e] border-b border-zinc-800/80 px-3 flex items-center justify-between shrink-0">
-        {/* Tab Buttons */}
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setActiveTab('dealer')}
-            className={clsx(
-              'flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-bold tracking-tight transition cursor-pointer',
-              activeTab === 'dealer'
-                ? 'bg-zinc-800 text-amber-300 border border-amber-500/30'
-                : 'text-zinc-400 hover:text-white'
-            )}
-          >
-            <MessageSquare size={13} />
-            <span>Dealer</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('coach')}
-            className={clsx(
-              'flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-bold tracking-tight transition cursor-pointer',
-              activeTab === 'coach'
-                ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/40'
-                : 'text-zinc-400 hover:text-white'
-            )}
-          >
-            <ShieldAlert size={13} className="text-emerald-400" />
-            <span>Coach</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('stats')}
-            className={clsx(
-              'flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-bold tracking-tight transition cursor-pointer',
-              activeTab === 'stats'
-                ? 'bg-purple-950/80 text-purple-300 border border-purple-500/40'
-                : 'text-zinc-400 hover:text-white'
-            )}
-          >
-            <BarChart2 size={13} className="text-purple-400" />
-            <span>Stats</span>
-          </button>
-        </div>
-
-        {/* Position Controls: Left / Bottom / Right / Close */}
-        <div className="flex items-center gap-1 border-l border-zinc-800 pl-2">
-          {position !== 'left' && (
-            <button
-              onClick={() => onPositionChange('left')}
-              className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"
-              title="Attach to Left Wall"
-            >
-              <PanelLeftClose size={13} />
-            </button>
-          )}
-
-          {position !== 'bottom' && (
-            <button
-              onClick={() => onPositionChange('bottom')}
-              className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"
-              title="Dock at Bottom"
-            >
-              <ArrowDownToLine size={13} />
-            </button>
-          )}
-
-          {position !== 'right' && (
-            <button
-              onClick={() => onPositionChange('right')}
-              className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"
-              title="Attach to Right Wall"
-            >
-              <PanelRightClose size={13} />
-            </button>
-          )}
-
-          <button
-            onClick={() => onPositionChange('hidden')}
-            className="p-1 rounded hover:bg-zinc-800 text-zinc-500 hover:text-rose-400 transition cursor-pointer ml-1"
-            title="Hide Dealer Log"
-          >
-            <X size={13} />
-          </button>
-        </div>
-      </div>
-
-      {/* Main Content Body */}
-      <div className="flex-1 overflow-hidden p-2.5 flex flex-col">
+    <CasinoDockPanel
+      position={position}
+      onPositionChange={onPositionChange}
+      isStacked={isStacked}
+      isTop={false}
+      title="Dealer Speech Log"
+      icon={<MessageSquare className="w-4 h-4 text-sky-400" />}
+      tabs={[
+        { id: 'dealer', label: 'Dealer', icon: <MessageSquare size={13} /> },
+        { id: 'coach', label: 'Coach', icon: <ShieldAlert size={13} className="text-emerald-400" /> },
+        { id: 'stats', label: 'Stats', icon: <BarChart2 size={13} className="text-purple-400" /> },
+      ]}
+      activeTab={activeTab}
+      onTabChange={(id) => setActiveTab(id as 'dealer' | 'coach' | 'stats')}
+      floatingTrigger={{
+        label: 'Dealer Log',
+        icon: <MessageSquare size={14} />,
+        position: 'bottom-right',
+      }}
+      className={className}
+    >
+      <div className="flex-1 overflow-hidden flex flex-col">
         {/* TAB 1: DEALER LOG */}
         {activeTab === 'dealer' && (
           <div className="flex-1 flex flex-col h-full overflow-hidden">
@@ -336,6 +248,6 @@ export function DealerLogBox({
           </div>
         )}
       </div>
-    </aside>
+    </CasinoDockPanel>
   );
 }
