@@ -74,6 +74,11 @@ This document defines the non-negotiable UI/UX, gameplay, and engineering princi
 
 ## 6. Security, Privacy & Verification Checklist
 - **No Secrets or OS Artifacts**: Never commit `.env*` files, API keys, credentials, local filesystem paths (`/Users/...`), or `.DS_Store` files.
+- **SonarQube & OWASP Top 10 Security Architecture Standards**:
+  - **Zero Hardcoded Secrets & PII (S2068 / CWE-798 / CWE-359)**: Never hardcode fallback passwords or personal emails.
+  - **Cryptographic Session Integrity (S3330 / CWE-384)**: All admin cookies must use HMAC-SHA256 signed session tokens with expiration and `crypto.timingSafeEqual` checks.
+  - **CSPRNG Casino Gaming Fairness (S2245 / CWE-330)**: Card shuffling (Poker, Blackjack) and wheel spins (Roulette) must use `secureRandom()` (`crypto.getRandomValues`).
+  - **No Dynamic Code Injection (S2631 / CWE-94)**: Prohibit `eval()` and `new Function()`.
 - **Automated Verification Gate**: Before committing any feature or bugfix, run:
   ```bash
   npm test

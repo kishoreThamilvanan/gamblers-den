@@ -161,7 +161,7 @@ export function DealerLogBox({
             {/* Scrollable Log Stream */}
             <div
               ref={scrollRef}
-              className="flex-1 overflow-y-auto space-y-1.5 font-mono text-[11px] pr-1 select-text"
+              className="flex-1 overflow-y-auto custom-scrollbar space-y-1.5 font-mono text-[11px] pr-1 select-text"
             >
               {logs.map((log, idx) => {
                 const isHandHeader = log.startsWith('===');
@@ -224,7 +224,7 @@ export function DealerLogBox({
 
         {/* TAB 2: LIVE STRATEGY COACH */}
         {activeTab === 'coach' && (
-          <div className="flex-1 overflow-y-auto space-y-3 pr-1 text-xs">
+          <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 pr-1 text-xs">
             {currentFeedback ? (
               <div className="bg-zinc-900/90 border border-zinc-800 rounded-xl p-3 shadow-lg">
                 <div className="flex items-center justify-between mb-2">
@@ -289,7 +289,7 @@ export function DealerLogBox({
 
         {/* TAB 3: SESSION STATS */}
         {activeTab === 'stats' && (
-          <div className="flex-1 overflow-y-auto space-y-3 text-xs pr-1">
+          <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 text-xs pr-1">
             <div className="grid grid-cols-2 gap-2">
               <div className="bg-zinc-900/90 border border-zinc-800 rounded-lg p-2.5">
                 <span className="text-[10px] text-zinc-400 block font-semibold uppercase">Hands</span>

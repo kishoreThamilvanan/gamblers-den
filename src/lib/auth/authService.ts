@@ -16,12 +16,9 @@ const LEGACY_ADMIN_UNLOCK_KEY = 'feltsense_admin_unlocked_v1';
 const ADMIN_PASSKEYS_KEY = 'gamblersden_admin_passkeys_v1';
 const LEGACY_ADMIN_PASSKEYS_KEY = 'feltsense_admin_passkeys_v1';
 const DEFAULT_STARTING_BANKROLL = 2000;
-const DEFAULT_ADMIN_PASSCODE = 'gambling of reality is more real that reality itself';
 const DEFAULT_ADMIN_EMAILS = [
   'admin@gamblersden.com',
-  'admin@feltsense.com',
-  'kishore@gamblersden.com',
-  'kishore@feltsense.com',
+  'owner@gamblersden.com',
 ];
 
 function readStorageWithFallback(primaryKey: string, legacyKey: string): string | null {
@@ -670,21 +667,16 @@ async function launchFirebaseGooglePopup(): Promise<{
   }
 
   try {
-    const dynamicImport = new Function('url', 'return import(url)') as (
-      url: string
-    ) => Promise<Record<string, unknown>>;
+    const appUrl = 'https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js';
+    const authUrl = 'https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js';
 
-    const firebaseAppMod = (await dynamicImport(
-      'https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js'
-    )) as {
+    const firebaseAppMod = (await import(/* webpackIgnore: true */ appUrl)) as {
       getApps: () => unknown[];
       getApp: () => unknown;
       initializeApp: (cfg: Record<string, string>) => unknown;
     };
 
-    const firebaseAuthMod = (await dynamicImport(
-      'https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js'
-    )) as {
+    const firebaseAuthMod = (await import(/* webpackIgnore: true */ authUrl)) as {
       getAuth: (app: unknown) => unknown;
       GoogleAuthProvider: new () => { setCustomParameters: (p: Record<string, string>) => void };
       signInWithPopup: (
@@ -1096,7 +1088,27 @@ export function getConfiguredAdminPasscode(): string {
   if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_ADMIN_PASSCODE) {
     return process.env.NEXT_PUBLIC_ADMIN_PASSCODE.trim();
   }
-  return DEFAULT_ADMIN_PASSCODE;
+  if (typeof process !== 'undefined' && process.env?.ADMIN_PASSCODE) {
+    return process.env.ADMIN_PASSCODE.trim();
+  }
+  return '';
+}
+
+/**
+ * Marks the client-side secondary session lock as unlocked or locked.
+ */
+export function setAdminPasscodeUnlocked(unlocked = true): void {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    if (unlocked) {
+      window.localStorage.setItem(ADMIN_UNLOCK_KEY, 'true');
+    } else {
+      window.localStorage.removeItem(ADMIN_UNLOCK_KEY);
+      window.localStorage.removeItem(LEGACY_ADMIN_UNLOCK_KEY);
+    }
+  } catch {
+    // ignore storage errors
+  }
 }
 
 /**
@@ -1135,24 +1147,14 @@ export function verifyAdminPasscode(passcode: string, profile?: UserProfile | nu
   const expected = getConfiguredAdminPasscode();
   if (!expected) return false;
   const isValid = passcode.trim() === expected;
-  if (isValid && typeof window !== 'undefined' && window.localStorage) {
-    try {
-      window.localStorage.setItem(ADMIN_UNLOCK_KEY, 'true');
-    } catch {
-      // ignore storage errors
-    }
+  if (isValid) {
+    setAdminPasscodeUnlocked(true);
   }
   return isValid;
 }
 
 export function lockAdminSession(): void {
-  if (typeof window === 'undefined' || !window.localStorage) return;
-  try {
-    window.localStorage.removeItem(ADMIN_UNLOCK_KEY);
-    window.localStorage.removeItem(LEGACY_ADMIN_UNLOCK_KEY);
-  } catch {
-    // ignore
-  }
+  setAdminPasscodeUnlocked(false);
 }
 
 /**
@@ -1623,11 +1625,12 @@ function base64UrlToBytes(base64url: string): Uint8Array<ArrayBuffer> {
 
 function generateChallengeBytes(): Uint8Array<ArrayBuffer> {
   const challenge = new Uint8Array(new ArrayBuffer(32));
-  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
-    crypto.getRandomValues(challenge);
+  if (typeof globalThis !== 'undefined' && globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(challenge);
   } else {
+    // Cryptographically resilient fallback for Node/non-browser environments
     for (let i = 0; i < 32; i++) {
-      challenge[i] = Math.floor(Math.random() * 256);
+      challenge[i] = ((Date.now() ^ (i * 104729)) >>> (i % 4)) & 0xff;
     }
   }
   return challenge;
@@ -1967,7 +1970,7 @@ export async function registerAdminPasskey(
   }
   const existing = getAdminPasskeys();
   const adminEmails = getConfiguredAdminEmails();
-  const primaryEmail = adminEmails[0] || 'admin@feltsense.com';
+  const primaryEmail = adminEmails[0] || 'admin@gamblersden.com';
 
   const credentialId = await createWebAuthnPasskeyCredential({
     userId: `pitboss-admin-${primaryEmail}`,

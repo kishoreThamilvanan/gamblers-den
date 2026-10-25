@@ -10,6 +10,7 @@ import {
   isAdminEmailWhitelisted,
   getConfiguredAdminEmails,
   verifyAdminPasscode,
+  setAdminPasscodeUnlocked,
   lockAdminSession,
   computeReadinessGrade,
   adminUpdateUserBankroll,
@@ -180,7 +181,7 @@ export function AdminConsoleView() {
         return;
       }
 
-      verifyAdminPasscode(passcodeInput, activeUser);
+      setAdminPasscodeUnlocked(true);
       setPasscodeInput('');
       setAuthorized(true);
       await refreshUsers();
@@ -459,7 +460,7 @@ export function AdminConsoleView() {
 
   if (!ownerWhitelisted) {
     return (
-      <div className="min-h-screen w-full bg-[#0A0D12] text-white flex flex-col items-center justify-center p-6 font-sans select-none">
+      <div className="min-h-screen w-full bg-[#0A0D12] text-white flex flex-col items-center justify-center p-6 font-sans select-none overflow-y-auto custom-scrollbar">
         <div className="max-w-sm w-full bg-[#121722] border border-rose-500/30 rounded-2xl p-7 shadow-2xl space-y-5 text-center">
           <div className="w-11 h-11 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-400 flex items-center justify-center mx-auto">
             <Lock size={20} />
@@ -486,7 +487,7 @@ export function AdminConsoleView() {
 
   if (!authorized) {
     return (
-      <div className="min-h-screen w-full bg-[#0A0D12] text-white flex flex-col items-center justify-center p-6 font-sans select-none">
+      <div className="min-h-screen w-full bg-[#0A0D12] text-white flex flex-col items-center justify-center p-6 font-sans select-none overflow-y-auto custom-scrollbar">
         <div className="max-w-sm w-full bg-[#121722] border border-amber-500/30 rounded-2xl p-7 shadow-2xl space-y-5">
           <div className="flex items-center justify-between">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[11px] font-bold uppercase tracking-wider">
@@ -572,7 +573,7 @@ export function AdminConsoleView() {
   // AUTHORIZED PIT BOSS ADMIN CONSOLE
   // ============================================================================
   return (
-    <div className="min-h-screen w-full bg-[#0B0E14] text-white flex flex-col font-sans">
+    <div className="min-h-screen w-full bg-[#0B0E14] text-white flex flex-col font-sans overflow-y-auto custom-scrollbar">
       {/* Top Admin Header */}
       <header className="border-b border-white/10 bg-[#121722]/90 backdrop-blur-md px-6 py-4 sticky top-0 z-40 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -587,9 +588,6 @@ export function AdminConsoleView() {
               <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
                 <ShieldCheck size={11} />
                 <span>Owner Verified</span>
-              </span>
-              <span className="hidden sm:inline-block text-[10px] font-mono bg-white/5 border border-white/10 px-2 py-0.5 rounded text-zinc-400">
-                Shortcut: ⌘⇧A
               </span>
             </div>
             <p className="text-xs text-zinc-400">
@@ -897,7 +895,7 @@ export function AdminConsoleView() {
             </div>
 
             {/* Responsive Semantic Table */}
-            <div className="overflow-x-auto max-h-[540px] custom-scrollbar rounded-2xl border border-white/10">
+            <div className="overflow-x-auto overflow-y-auto max-h-[540px] custom-scrollbar rounded-2xl border border-white/10">
               <table className="w-full text-left border-collapse">
                 <thead className="sticky top-0 z-10 bg-[#1A2130] text-[10px] font-extrabold uppercase tracking-wider text-zinc-400 border-b border-white/10">
                   <tr>
@@ -1031,7 +1029,7 @@ export function AdminConsoleView() {
           </div>
 
           {/* Right Column: Individual Player Dossier Inspector & Pit Boss Controls */}
-          <div className="bg-[#131824] border border-white/15 rounded-3xl p-5 space-y-5 sticky top-24">
+          <div className="bg-[#131824] border border-white/15 rounded-3xl p-5 space-y-5 sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto custom-scrollbar">
             {!selectedUser ? (
               <div className="text-center py-12 text-zinc-400 text-xs">
                 Select a player from the directory to inspect their full telemetry dossier and Pit Boss controls.

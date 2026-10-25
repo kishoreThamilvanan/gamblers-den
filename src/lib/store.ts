@@ -250,6 +250,8 @@ interface PokerStore extends GameState {
   autoSave: () => void;
 
   // In-Game Actions
+  isDealingCards: boolean;
+  setIsDealingCards: (isDealing: boolean) => void;
   dealNextHand: () => void;
   playerAction: (action: 'fold' | 'check' | 'call' | 'bet' | 'raise', amount?: number, liveTell?: string) => void;
   advancePhase: () => void;
@@ -668,8 +670,30 @@ export const usePokerStore = create<PokerStore>((set, get) => ({
       viewMode: 'LOBBY',
       savedSessions: sessions,
       ambientPlaying: false,
-      preAction: null
+      preAction: null,
+      isDealingCards: false,
     });
+  },
+
+  isDealingCards: false,
+
+  setIsDealingCards: (isDealing: boolean) => {
+    set({ isDealingCards: isDealing });
+    if (!isDealing) {
+      const state = get();
+      if (state.phase !== 'SHOWDOWN' && state.viewMode === 'GAME') {
+        const p = state.players[state.activePlayerIndex];
+        if (p && p.archetype !== 'Hero' && !p.hasFolded && !p.isAllIn) {
+          const persona = BOT_PERSONAS.find((bp) => bp.id === p.personaId);
+          const baseDelay = persona ? persona.thinkingDelayMin + Math.random() * (persona.thinkingDelayMax - persona.thinkingDelayMin) : 900;
+          const delay = baseDelay * getSpeedMultiplier(state.gameSpeed);
+          clearAITimeout();
+          aiTimeoutId = setTimeout(() => {
+            get().executeAIAction();
+          }, delay);
+        }
+      }
+    }
   },
 
   dealNextHand: () => {
@@ -700,6 +724,7 @@ export const usePokerStore = create<PokerStore>((set, get) => ({
         ...p,
         stack: effectiveStack,
         hasFolded: false,
+        foldPhase: undefined,
         isActive: effectiveStack > 0,
         isAllIn: false,
         currentBet: 0,
@@ -768,6 +793,7 @@ export const usePokerStore = create<PokerStore>((set, get) => ({
           drillLogs.push(`${updatedPlayers[seatIdx].name} (${updatedPlayers[seatIdx].position}) limps for $2.00.`);
         } else {
           updatedPlayers[seatIdx].hasFolded = true;
+          updatedPlayers[seatIdx].foldPhase = 'PREFLOP';
           updatedPlayers[seatIdx].lastAction = {
             type: 'fold',
             label: 'FOLDED',
@@ -802,7 +828,7 @@ export const usePokerStore = create<PokerStore>((set, get) => ({
 
     get().autoSave();
 
-    if (updatedPlayers[firstActor] && updatedPlayers[firstActor].archetype !== 'Hero') {
+    if (!get().isDealingCards && updatedPlayers[firstActor] && updatedPlayers[firstActor].archetype !== 'Hero') {
       const persona = BOT_PERSONAS.find((bp) => bp.id === updatedPlayers[firstActor].personaId);
       const baseDelay = persona ? persona.thinkingDelayMin + Math.random() * (persona.thinkingDelayMax - persona.thinkingDelayMin) : 900;
       const delay = baseDelay * getSpeedMultiplier(get().gameSpeed);
@@ -829,6 +855,7 @@ export const usePokerStore = create<PokerStore>((set, get) => ({
     // Sound triggers and visual action badge based on action (using Multi-Density Chip Sound Escalation)
     if (action === 'fold') {
       p.hasFolded = true;
+      p.foldPhase = state.phase;
       p.lastAction = {
         type: 'fold',
         label: 'FOLDED',
@@ -1038,24 +1065,49 @@ export const usePokerStore = create<PokerStore>((set, get) => ({
       sound.playWinPot();
       const winLog = `${winner.name} wins pot of $${newPot.toFixed(2)} (all opponents folded).`;
 
+      // Run out remaining community cards to 5 so players can see the full board and realize hands
+      let finalBoard = [...state.communityCards];
+      let wasRunout = false;
+      if (finalBoard.length < 5) {
+        const needed = 5 - finalBoard.length;
+        const extraCards = state.deck.drawMultiple(needed);
+        finalBoard = [...finalBoard, ...extraCards];
+        wasRunout = true;
+      }
+
+      const hero = updatedPlayers[state.heroSeatIndex];
+      let heroPotentialHand: HandResult['heroPotentialHand'] | undefined;
+      if (hero && hero.holeCards && hero.holeCards.length === 2 && finalBoard.length === 5) {
+        const heroEval = evaluateHand([...hero.holeCards, ...finalBoard]);
+        heroPotentialHand = {
+          name: heroEval.name,
+          rank: heroEval.rank,
+          wasFolded: hero.hasFolded,
+          foldStreet: hero.foldPhase
+        };
+      }
+
       const isHeroWinner = winner.archetype === 'Hero';
       const handResult: HandResult = {
         winnerNames: winner.name,
         winnerIds: [winner.id],
-        handName: 'All Opponents Folded',
+        handName: isHeroWinner 
+          ? (heroPotentialHand ? heroPotentialHand.name : 'All Opponents Folded')
+          : 'All Opponents Folded',
         amount: newPot,
         isHeroWinner,
         byFold: true,
         winningCards: isHeroWinner ? winner.holeCards : undefined,
+        heroPotentialHand,
+        wasRunout,
       };
 
-      const hero = updatedPlayers[state.heroSeatIndex];
       const totalHeroInvested = state.tableConfig.buyInAmount * (1 + state.rebuysUsed);
-      const netProfit = hero.stack - totalHeroInvested;
-      const handNetHeroProfit = hero.stack - state.heroStartStackForHand;
+      const netProfit = hero ? hero.stack - totalHeroInvested : 0;
+      const handNetHeroProfit = hero ? hero.stack - state.heroStartStackForHand : 0;
       const newProfitHistory = [
         ...updatedStats.profitHistory,
-        { hand: state.handsPlayed, profit: netProfit, balance: hero.stack }
+        { hand: state.handsPlayed, profit: netProfit, balance: hero ? hero.stack : 0 }
       ];
 
       const completedRecord: HandHistoryRecord = {
@@ -1063,7 +1115,7 @@ export const usePokerStore = create<PokerStore>((set, get) => ({
         timestamp: now,
         heroHoleCards: hero ? [...hero.holeCards] : [],
         heroPosition: hero ? hero.position : 'BTN',
-        finalCommunityCards: [...state.communityCards],
+        finalCommunityCards: [...finalBoard],
         potWon: newPot,
         winnerNames: winner.name,
         isHeroWinner,
@@ -1078,6 +1130,7 @@ export const usePokerStore = create<PokerStore>((set, get) => ({
 
       set({
         phase: 'SHOWDOWN',
+        communityCards: finalBoard,
         pot: 0,
         preAction: null,
         userProfile: updatedProfile,
@@ -1212,6 +1265,18 @@ export const usePokerStore = create<PokerStore>((set, get) => ({
         const winEvaluation = evaluateHand([...winners[0].holeCards, ...newCards]);
         showdownLogs.push(`Showdown Winner(s): ${winnerNames} with ${winEvaluation.name} ($${finalPot.toFixed(2)})`);
 
+        const hero = updatedPlayers[state.heroSeatIndex];
+        let heroPotentialHand: HandResult['heroPotentialHand'] | undefined;
+        if (hero && hero.holeCards && hero.holeCards.length === 2 && newCards.length === 5) {
+          const heroEval = evaluateHand([...hero.holeCards, ...newCards]);
+          heroPotentialHand = {
+            name: heroEval.name,
+            rank: heroEval.rank,
+            wasFolded: hero.hasFolded,
+            foldStreet: hero.foldPhase
+          };
+        }
+
         const isHeroWinner = winners.some((w) => w.archetype === 'Hero');
         const handResult: HandResult = {
           winnerNames,
@@ -1221,18 +1286,19 @@ export const usePokerStore = create<PokerStore>((set, get) => ({
           isHeroWinner,
           byFold: false,
           winningCards: winners[0].holeCards,
+          heroPotentialHand,
+          wasRunout: false
         };
 
         const potWonSnapshot = finalPot;
         finalPot = 0;
 
-        const hero = updatedPlayers[state.heroSeatIndex];
         const totalHeroInvested = state.tableConfig.buyInAmount * (1 + state.rebuysUsed);
-        const netProfit = hero.stack - totalHeroInvested;
-        const handNetHeroProfit = hero.stack - state.heroStartStackForHand;
+        const netProfit = hero ? hero.stack - totalHeroInvested : 0;
+        const handNetHeroProfit = hero ? hero.stack - state.heroStartStackForHand : 0;
         const newProfitHistory = [
           ...state.sessionStats.profitHistory,
-          { hand: state.handsPlayed, profit: netProfit, balance: hero.stack }
+          { hand: state.handsPlayed, profit: netProfit, balance: hero ? hero.stack : 0 }
         ];
 
         const completedRecord: HandHistoryRecord = {
@@ -1310,7 +1376,7 @@ export const usePokerStore = create<PokerStore>((set, get) => ({
 
   executeAIAction: () => {
     const state = get();
-    if (state.phase === 'SHOWDOWN' || state.viewMode !== 'GAME') return;
+    if (state.phase === 'SHOWDOWN' || state.viewMode !== 'GAME' || state.isDealingCards) return;
 
     const p = state.players[state.activePlayerIndex];
     if (!p || p.archetype === 'Hero' || p.hasFolded || p.isAllIn) return;

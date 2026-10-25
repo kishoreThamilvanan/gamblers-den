@@ -56,7 +56,7 @@ export function HandReplayerModal({ handRecord, onClose }: HandReplayerModalProp
       onClick={onClose}
     >
       <div
-        className="bg-[#11151e] border border-amber-500/40 rounded-3xl p-6 max-w-2xl w-full shadow-[0_25px_80px_rgba(0,0,0,0.95)] text-slate-100 flex flex-col gap-4"
+        className="bg-[#11151e] border border-amber-500/40 rounded-3xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto custom-scrollbar shadow-[0_25px_80px_rgba(0,0,0,0.95)] text-slate-100 flex flex-col gap-4"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

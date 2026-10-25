@@ -1,13 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
 import { usePokerStore } from '@/lib/store';
+import { TableTopBar } from '@/components/casino';
 import { Card } from './Card';
 import { UserProfileModal } from './UserProfileModal';
 import {
-  Play, PlusCircle, Trash2, Clock, Coins, Shield,
-  Layers, Award, Users, Sliders, Target, Zap, LogOut, User, ArrowLeft
+  Play, PlusCircle, Trash2, Clock, Coins,
+  Layers, Award, Users, Target, Zap, Sliders
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -20,7 +20,6 @@ export function LobbyView() {
     loadGame,
     deleteSession,
     userProfile,
-    logoutUser,
   } = usePokerStore();
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -37,74 +36,24 @@ export function LobbyView() {
   };
 
   return (
-    <div className="min-h-screen w-full bg-[#111112] text-white flex flex-col justify-between overflow-y-auto custom-scrollbar font-sans">
+    <div className="min-h-screen w-full bg-[#111112] text-white flex flex-col justify-between overflow-y-auto custom-scrollbar font-sans select-none">
       <UserProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
 
-      {/* Top Header / Branding */}
-      <header className="border-b border-white/5 bg-[#171719]/80 backdrop-blur-md px-6 sm:px-8 py-4 flex items-center justify-between sticky top-0 z-40">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white text-xs font-semibold transition"
-            title="Return to Grand Casino Floor"
-          >
-            <ArrowLeft size={13} />
-            <span className="hidden sm:inline">Casino Floor</span>
-          </Link>
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#429E68] to-[#2A8655] flex items-center justify-center text-white font-black text-xl italic shadow-[0_0_15px_rgba(66,158,104,0.4)]">
+      {/* Standardized Fixed Casino Top Navigation Bar */}
+      <TableTopBar
+        mode="lobby"
+        title="Texas Hold'em"
+        subtitle={`${tableConfig.tableSize}-Max • $${tableConfig.buyInAmount} Buy-In • ${tableConfig.difficulty.toUpperCase()}`}
+        icon={
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#429E68] to-[#2A8655] flex items-center justify-center text-white font-black text-xs italic shadow-md shrink-0">
             GD
           </div>
-          <div>
-            <h1 className="text-xl font-black tracking-wider uppercase leading-none">Texas Hold&apos;em Room</h1>
-            <span className="text-[#429E68] text-[10px] tracking-[0.25em] font-bold uppercase">Live Cardroom &bull; Gambler&apos;s Den</span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <div className="hidden md:flex items-center gap-2 text-xs text-white/60 bg-white/5 px-3 py-1.5 rounded-full border border-white/10">
-            <Shield className="w-3.5 h-3.5 text-[#429E68]" />
-            <span>{tableConfig.tableSize}-Max • ${tableConfig.buyInAmount} Buy-In • {tableConfig.difficulty.toUpperCase()}</span>
-          </div>
-
-          {userProfile && (
-            <button
-              onClick={() => setIsProfileOpen(true)}
-              className="flex items-center gap-2.5 bg-zinc-900 hover:bg-zinc-800 border border-white/15 px-3 py-1.5 rounded-full transition cursor-pointer"
-              title="Open Player Profile, Career Stats & Table Identity"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={userProfile.avatarUrl}
-                alt={userProfile.nickname}
-                style={{ width: '24px', height: '24px', borderRadius: '9999px', objectFit: 'cover' }}
-                className="w-6 h-6 rounded-full object-cover border border-amber-400"
-              />
-              <div className="flex items-center gap-2 text-xs">
-                <span className="font-bold text-white">{userProfile.nickname}</span>
-                <span className="text-emerald-400 font-mono font-bold">
-                  ${userProfile.careerBankroll.toFixed(0)}
-                </span>
-                {userProfile.isGuest && (
-                  <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1.5 py-0.2 rounded font-bold uppercase">
-                    Guest
-                  </span>
-                )}
-              </div>
-              <User size={13} className="text-zinc-400" />
-            </button>
-          )}
-
-          {userProfile && (
-            <button
-              onClick={logoutUser}
-              className="p-2 rounded-full bg-white/5 hover:bg-rose-950/60 text-zinc-400 hover:text-rose-300 border border-white/10 transition cursor-pointer"
-              title="Sign Out"
-            >
-              <LogOut size={15} />
-            </button>
-          )}
-        </div>
-      </header>
+        }
+        floorHref="/"
+        bankroll={userProfile?.careerBankroll}
+        userProfile={userProfile}
+        onProfileClick={() => setIsProfileOpen(true)}
+      />
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-6xl w-full mx-auto px-6 py-8 flex flex-col gap-8">

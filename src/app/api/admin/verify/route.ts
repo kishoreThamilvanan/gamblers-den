@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
+import { createAdminSessionToken } from '@/lib/auth/adminSession';
 
 // In-memory rate limiting tracker (per IP / identifier)
 const failedAttemptsMap = new Map<string, { count: number; lockedUntil: number }>();
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 60 * 1000; // 60 seconds
+const SESSION_MAX_AGE_SEC = 3600 * 4; // 4 hours
 
 function getClientIp(request: Request): string {
   const forwarded = request.headers.get('x-forwarded-for');
@@ -44,7 +46,7 @@ export async function POST(request: Request) {
       .map((e) => e.trim().toLowerCase())
       .filter(Boolean);
 
-    const defaultEmails = ['admin@gamblersden.com', 'admin@feltsense.com', 'kishore@gamblersden.com', 'kishore@feltsense.com'];
+    const defaultEmails = ['admin@gamblersden.com', 'owner@gamblersden.com'];
     const validEmails = Array.from(new Set([...defaultEmails, ...configuredEmails]));
 
     if (!email || !validEmails.includes(String(email).trim().toLowerCase())) {
@@ -54,11 +56,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const expectedPasscode = (
-      process.env.ADMIN_PASSCODE ||
-      process.env.NEXT_PUBLIC_ADMIN_PASSCODE ||
-      'gambling of reality is more real that reality itself'
-    ).trim();
+    const expectedPasscode = (process.env.ADMIN_PASSCODE || process.env.NEXT_PUBLIC_ADMIN_PASSCODE || '').trim();
+
+    if (!expectedPasscode) {
+      return NextResponse.json(
+        { error: 'Server owner passcode is not configured in environment variables.' },
+        { status: 500 }
+      );
+    }
 
     const isValid = isTimingSafeMatch(expectedPasscode, String(passcode || ''));
 
@@ -84,13 +89,15 @@ export async function POST(request: Request) {
     // Success: clear rate limit tracker
     failedAttemptsMap.delete(ip);
 
+    const sessionToken = createAdminSessionToken(String(email).trim().toLowerCase());
     const response = NextResponse.json({ success: true });
-    // Issue secure HTTP-only cookie
-    response.cookies.set('gd_admin_session', 'authenticated', {
+
+    // Issue secure HTTP-only cryptographically signed session cookie
+    response.cookies.set('gd_admin_session', sessionToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      maxAge: 3600 * 4, // 4 hours
+      maxAge: SESSION_MAX_AGE_SEC,
       path: '/',
     });
 

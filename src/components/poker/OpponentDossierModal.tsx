@@ -31,7 +31,7 @@ export function OpponentDossierModal({ player, onClose }: OpponentDossierModalPr
       onClick={onClose}
     >
       <div
-        className="bg-[#11151e] border border-amber-500/40 rounded-2xl p-5 max-w-md w-full shadow-[0_25px_70px_rgba(0,0,0,0.9)] text-slate-100 flex flex-col gap-4 relative"
+        className="bg-[#11151e] border border-amber-500/40 rounded-2xl p-5 max-w-md w-full max-h-[90vh] overflow-y-auto custom-scrollbar shadow-[0_25px_70px_rgba(0,0,0,0.9)] text-slate-100 flex flex-col gap-4 relative"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Header */}

@@ -27,6 +27,17 @@ function resolveWithExtensions(basePath) {
 }
 
 export async function resolve(specifier, context, nextResolve) {
+  // Handle Next.js subpath imports in Node ESM test runner
+  if (specifier === 'next/link') {
+    return nextResolve('next/link.js', context);
+  }
+  if (specifier === 'next/navigation') {
+    return nextResolve('next/navigation.js', context);
+  }
+  if (specifier === 'next/image') {
+    return nextResolve('next/image.js', context);
+  }
+
   // 1. Handle Next.js @/* path alias -> src/*
   if (specifier.startsWith('@/')) {
     const targetPath = path.join(SRC_DIR, specifier.slice(2));

@@ -164,6 +164,49 @@ class SoundSystem {
   }
 
   /**
+   * Authentic wool felt friction slide / whoosh as a card glides off the shoe across the table.
+   */
+  public playCardSlide() {
+    if (this.isMuted) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    const t = ctx.currentTime;
+    const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(this.volume * 0.42, t);
+    masterGain.connect(ctx.destination);
+
+    const bufferSize = Math.floor(ctx.sampleRate * 0.18);
+    const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const output = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      output[i] = Math.random() * 2 - 1;
+    }
+
+    const noise = ctx.createBufferSource();
+    noise.buffer = noiseBuffer;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(900, t);
+    filter.frequency.exponentialRampToValueAtTime(2600, t + 0.08);
+    filter.frequency.exponentialRampToValueAtTime(600, t + 0.18);
+    filter.Q.setValueAtTime(2.2, t);
+
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.01, t);
+    noiseGain.gain.linearRampToValueAtTime(0.65, t + 0.05);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+
+    noise.connect(filter);
+    filter.connect(noiseGain);
+    noiseGain.connect(masterGain);
+
+    noise.start(t);
+    noise.stop(t + 0.19);
+  }
+
+  /**
    * Card peeling sound - tactile paper friction.
    */
   public playCardPeel() {

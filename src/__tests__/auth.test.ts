@@ -145,6 +145,9 @@ describe('User Authentication, Profile Identity & Career Bankroll (src/lib/auth/
   });
 
   it('enforces Strict Owner-Only Admin Access Gate (requires whitelisted verified owner email + secondary passcode/passkey unlock)', async () => {
+    process.env.ADMIN_PASSCODE = 'test-owner-passcode-secure';
+    process.env.ADMIN_EMAILS = 'admin@gamblersden.com';
+
     const regularUser = await usePokerStore.getState().loginWithGoogle({
       email: 'regularplayer@gmail.com',
       displayName: 'Regular Player',
@@ -153,13 +156,13 @@ describe('User Authentication, Profile Identity & Career Bankroll (src/lib/auth/
     assert.equal(isAdminUser(regularUser), false);
 
     // Non-owner user CANNOT unlock Admin Console even if they enter the Pit Boss passphrase
-    assert.equal(verifyAdminPasscode('gambling of reality is more real that reality itself'), false);
+    assert.equal(verifyAdminPasscode('test-owner-passcode-secure'), false);
     assert.equal(isAdminUser(regularUser), false);
 
     // Signing in with a whitelisted owner email passes Layer 1 (isAdminEmailWhitelisted),
     // and requires Layer 2 (secondary passcode or passkey) to unlock isAdminUser
     const adminUser = await usePokerStore.getState().loginWithGoogle({
-      email: 'admin@feltsense.com',
+      email: 'admin@gamblersden.com',
       displayName: 'Owner Admin',
     });
     assert.equal(isAdminEmailWhitelisted(adminUser), true);
@@ -170,7 +173,7 @@ describe('User Authentication, Profile Identity & Career Bankroll (src/lib/auth/
     assert.equal(isAdminUser(adminUser), false);
 
     // Correct passphrase unlocks Pit Boss Console for the verified owner
-    assert.equal(verifyAdminPasscode('gambling of reality is more real that reality itself'), true);
+    assert.equal(verifyAdminPasscode('test-owner-passcode-secure'), true);
     assert.equal(isAdminUser(adminUser), true);
 
     // Locking session requires re-verification
@@ -263,7 +266,7 @@ describe('User Authentication, Profile Identity & Career Bankroll (src/lib/auth/
 
     // Sign in as whitelisted owner
     const owner = await usePokerStore.getState().loginWithGoogle({
-      email: 'admin@feltsense.com',
+      email: 'admin@gamblersden.com',
       displayName: 'Owner Admin',
     });
 

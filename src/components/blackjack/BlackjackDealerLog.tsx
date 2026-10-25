@@ -173,7 +173,7 @@ export function BlackjackDealerLog({
       </div>
 
       {/* Message Feed */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-2.5 space-y-1.5 text-xs font-mono">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto custom-scrollbar p-2.5 space-y-1.5 text-xs font-mono">
         {filteredLogs.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-zinc-500 text-center p-4">
             <Shield size={24} className="mb-2 text-zinc-600" />

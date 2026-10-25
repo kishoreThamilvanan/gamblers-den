@@ -151,7 +151,7 @@ export function RouletteAICoach({
       </div>
 
       {/* Coach Content */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3 text-xs">
         {/* 1. Wheel Coverage Meter */}
         <div className="bg-gradient-to-b from-amber-950/40 to-zinc-900 border border-amber-600/40 rounded-xl p-3 shadow-lg">
           <div className="flex items-center justify-between mb-2">

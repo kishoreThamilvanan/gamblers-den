@@ -1,9 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
-  Volume2, VolumeX, LogOut, BarChart3, Eye, EyeOff, RotateCcw, RefreshCw, UserSearch, CheckSquare, Square, ArrowLeft
+  BarChart3, Eye, EyeOff, RotateCcw, RefreshCw, UserSearch, CheckSquare, Square
 } from 'lucide-react';
 import { usePokerStore } from '@/lib/store';
 import { sound } from '@/lib/sound/soundSystem';
@@ -18,6 +17,7 @@ import { HandReplayerModal } from '@/components/poker/HandReplayerModal';
 import { ChipStack } from '@/components/poker/ChipStack';
 import { DealerLogBox, LogPosition } from '@/components/poker/DealerLogBox';
 import { AICoachPanel } from '@/components/poker/AICoachPanel';
+import { CardDealingOverlay, useCardDealingAnimation, TableTopBar } from '@/components/casino';
 import { Player, HandHistoryRecord, PreActionSelection } from '@/types/poker';
 import { clsx } from 'clsx';
 
@@ -59,6 +59,16 @@ const SEAT_POSITIONS = [
   { top: '18%', left: '80%', slot: 6 }, // 6: Top Right
   { top: '48%', left: '92%', slot: 7 }, // 7: Middle Right
   { top: '78%', left: '80%', slot: 8 }  // 8: Bottom Right
+];
+
+const POKER_DECK_ORIGIN = { x: 50, y: 13 };
+
+const COMMUNITY_CARD_COORDS = [
+  { x: 38, y: 50 },
+  { x: 44, y: 50 },
+  { x: 50, y: 50 },
+  { x: 56, y: 50 },
+  { x: 62, y: 50 },
 ];
 
 function getVisualSeatLayout(idx: number, effectiveHeroIdx: number, totalPlayers: number) {
@@ -157,6 +167,8 @@ export default function Home() {
     setAlwaysRevealHoleCards,
     lastHandRecord,
     userProfile,
+    isDealingCards,
+    setIsDealingCards,
   } = usePokerStore();
 
   const [themeKey, setThemeKey] = useState<'emerald' | 'royal' | 'charcoal'>('emerald');
@@ -167,9 +179,41 @@ export default function Home() {
   const [coachPosition, setCoachPosition] = useState<LogPosition>('left');
   const [logPosition, setLogPosition] = useState<LogPosition>('right');
 
+  // Shared Physical Card Dealing Animation Engine
+  const {
+    flyingCards,
+    isDealing: isPhysicalDealing,
+    dealSingleCard,
+    fastForward,
+    onCardLanded,
+  } = useCardDealingAnimation();
+
+  const [visibleHoleCounts, setVisibleHoleCounts] = useState<Record<string, number>>({});
+  const [visibleCommunityCount, setVisibleCommunityCount] = useState<number>(0);
+  const [isDealingHand, setIsDealingHand] = useState<boolean>(false);
+  const isDealingActive = isPhysicalDealing || isDealingHand || isDealingCards;
+  const lastDealtHandNumberRef = useRef<number | null>(null);
+  const isDealingInProgressRef = useRef<boolean>(false);
+
+  // Fast-Forward dealing animation (Spacebar or felt click)
+  const handleFastForward = useCallback(() => {
+    fastForward();
+    isDealingInProgressRef.current = false;
+    const allCounts: Record<string, number> = {};
+    players.forEach((p) => {
+      allCounts[p.id] = 2;
+    });
+    setVisibleHoleCounts(allCounts);
+    setVisibleCommunityCount(communityCards.length);
+    setIsDealingCards(false);
+    setIsDealingHand(false);
+  }, [fastForward, players, communityCards.length, setIsDealingCards]);
+
   // 3D Hole Card Peeking state
   const [isPeeking, setIsPeeking] = useState(false);
   const [pinnedHandNumber, setPinnedHandNumber] = useState<number | null>(null);
+  const [dismissedWinnerHandNumber, setDismissedWinnerHandNumber] = useState<number | null>(null);
+  const isWinnerCardDismissed = dismissedWinnerHandNumber === handsPlayed;
 
   const heroIdx = players.findIndex((p) => p.archetype === 'Hero');
   const effectiveHeroIdx = heroIdx !== -1 ? heroIdx : heroSeatIndex;
@@ -249,6 +293,153 @@ export default function Home() {
     [isHeroTurn, handleAction]
   );
 
+  // Step-by-Step Clockwise Physical Hole Card Distribution
+  const animateHoleDeal = useCallback(
+    async (currentPlayers: Player[], currentDealerIdx: number) => {
+      if (isDealingInProgressRef.current) return;
+      isDealingInProgressRef.current = true;
+      setIsDealingHand(true);
+      setIsDealingCards(true);
+
+      const initialCounts: Record<string, number> = {};
+      currentPlayers.forEach((p) => {
+        initialCounts[p.id] = 0;
+      });
+      setVisibleHoleCounts(initialCounts);
+      setVisibleCommunityCount(0);
+
+      const count = currentPlayers.length;
+      const activeSeats: number[] = [];
+      for (let step = 1; step <= count; step++) {
+        const s = (currentDealerIdx + step) % count;
+        if (currentPlayers[s] && currentPlayers[s].isActive && !currentPlayers[s].hasFolded) {
+          activeSeats.push(s);
+        }
+      }
+
+      // Authentic, slow & relaxed pacing requested by user
+      const flightDuration = gameSpeed === 'relaxed' ? 420 : gameSpeed === 'fast' ? 200 : 300;
+      const stepPause = gameSpeed === 'relaxed' ? 260 : gameSpeed === 'fast' ? 70 : 140;
+
+      // Pass 1: Deal 1st hole card clockwise
+      for (const seatIdx of activeSeats) {
+        if (!isDealingInProgressRef.current) break;
+        const p = currentPlayers[seatIdx];
+        const isHero = p.archetype === 'Hero' || seatIdx === effectiveHeroIdx;
+        const pos = getVisualSeatLayout(seatIdx, effectiveHeroIdx, count);
+        const targetCoord = {
+          x: parseFloat(pos.left) - (isHero ? 3.5 : 2),
+          y: parseFloat(pos.top) - (isHero ? 7 : 4),
+        };
+
+        await dealSingleCard({
+          card: p.holeCards[0] || { rank: 'A', suit: 's' },
+          faceDown: !isHero,
+          size: isHero ? 'md' : 'sm',
+          origin: POKER_DECK_ORIGIN,
+          target: targetCoord,
+          durationMs: flightDuration,
+          onLanded: () => {
+            setVisibleHoleCounts((prev) => ({ ...prev, [p.id]: 1 }));
+          },
+        });
+        if (!isDealingInProgressRef.current) break;
+        await new Promise((r) => setTimeout(r, stepPause));
+      }
+
+      // Pass 2: Deal 2nd hole card clockwise
+      for (const seatIdx of activeSeats) {
+        if (!isDealingInProgressRef.current) break;
+        const p = currentPlayers[seatIdx];
+        const isHero = p.archetype === 'Hero' || seatIdx === effectiveHeroIdx;
+        const pos = getVisualSeatLayout(seatIdx, effectiveHeroIdx, count);
+        const targetCoord = {
+          x: parseFloat(pos.left) + (isHero ? 3.5 : 2),
+          y: parseFloat(pos.top) - (isHero ? 7 : 4),
+        };
+
+        await dealSingleCard({
+          card: p.holeCards[1] || { rank: 'K', suit: 'h' },
+          faceDown: !isHero,
+          size: isHero ? 'md' : 'sm',
+          origin: POKER_DECK_ORIGIN,
+          target: targetCoord,
+          durationMs: flightDuration,
+          onLanded: () => {
+            setVisibleHoleCounts((prev) => ({ ...prev, [p.id]: 2 }));
+          },
+        });
+        if (!isDealingInProgressRef.current) break;
+        await new Promise((r) => setTimeout(r, stepPause));
+      }
+
+      setIsDealingCards(false);
+      setIsDealingHand(false);
+      isDealingInProgressRef.current = false;
+    },
+    [dealSingleCard, effectiveHeroIdx, gameSpeed, setIsDealingCards]
+  );
+
+  const handleDealNextHand = useCallback(async () => {
+    if (isDealingInProgressRef.current || isPhysicalDealing) return;
+    setIsDealingCards(true);
+    dealNextHand();
+    const state = usePokerStore.getState();
+    lastDealtHandNumberRef.current = state.handsPlayed;
+    await animateHoleDeal(state.players, state.dealerIndex);
+  }, [animateHoleDeal, dealNextHand, isPhysicalDealing, setIsDealingCards]);
+
+  // Initial table launch deal animation (when entering from lobby)
+  useEffect(() => {
+    if (viewMode === 'GAME' && phase === 'PREFLOP' && lastDealtHandNumberRef.current !== handsPlayed && players.length > 0) {
+      lastDealtHandNumberRef.current = handsPlayed;
+      animateHoleDeal(players, dealerIndex);
+    }
+  }, [viewMode, phase, handsPlayed, players, dealerIndex, animateHoleDeal]);
+
+  // Community Card Street-by-Street Deal Animation (Flop, Turn, River)
+  useEffect(() => {
+    if (viewMode !== 'GAME' || phase === 'PREFLOP' || phase === 'SHOWDOWN') {
+      return;
+    }
+
+    if (communityCards.length > visibleCommunityCount) {
+      let isCancelled = false;
+      const dealCommunity = async () => {
+        const startIdx = visibleCommunityCount;
+        const flightDuration = gameSpeed === 'relaxed' ? 380 : gameSpeed === 'fast' ? 180 : 280;
+        const stepPause = gameSpeed === 'relaxed' ? 220 : gameSpeed === 'fast' ? 60 : 120;
+
+        for (let i = startIdx; i < communityCards.length; i++) {
+          if (isCancelled) break;
+          const card = communityCards[i];
+          const target = COMMUNITY_CARD_COORDS[i] || { x: 50, y: 50 };
+
+          await dealSingleCard({
+            card,
+            faceDown: false,
+            size: 'md',
+            origin: POKER_DECK_ORIGIN,
+            target,
+            durationMs: flightDuration,
+            onLanded: () => {
+              if (!isCancelled) {
+                setVisibleCommunityCount(i + 1);
+              }
+            },
+          });
+          if (isCancelled) break;
+          await new Promise((r) => setTimeout(r, stepPause));
+        }
+      };
+
+      dealCommunity();
+      return () => {
+        isCancelled = true;
+      };
+    }
+  }, [communityCards, visibleCommunityCount, phase, viewMode, gameSpeed, dealSingleCard]);
+
   // Keyboard Hotkeys
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -258,11 +449,18 @@ export default function Home() {
       if (replayRecord || isStatsOpen || selectedOpponent || isProfileOpen) {
         return;
       }
+      if (isPhysicalDealing || isDealingHand) {
+        if (e.code === 'Space') {
+          e.preventDefault();
+          handleFastForward();
+          return;
+        }
+      }
       const key = e.key.toUpperCase();
       if (phase === 'SHOWDOWN' && e.code === 'Space') {
         e.preventDefault();
         if (hero && hero.stack <= 0) return;
-        dealNextHand();
+        handleDealNextHand();
         return;
       }
       if (!isHeroTurn) return;
@@ -279,7 +477,7 @@ export default function Home() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isHeroTurn, phase, canCheck, currentBet, raiseAmount, handleAction, dealNextHand, hero, replayRecord, isStatsOpen, selectedOpponent, isProfileOpen]);
+  }, [isHeroTurn, phase, canCheck, currentBet, raiseAmount, handleAction, handleDealNextHand, handleFastForward, isPhysicalDealing, isDealingHand, hero, replayRecord, isStatsOpen, selectedOpponent, isProfileOpen]);
 
   // Evaluate current made hand
   const heroHandEval =
@@ -329,160 +527,71 @@ export default function Home() {
         onClose={() => setReplayRecord(null)}
       />
 
-      {/* Top Header Bar */}
-      <header className="h-12 bg-[#0c1017] border-b border-zinc-800/80 px-3 sm:px-4 flex items-center justify-between shrink-0 z-30">
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-amber-600 to-amber-400 flex items-center justify-center font-black text-black text-sm shadow">
-              ♠
-            </div>
-            <span className="font-bold tracking-tight text-white flex items-center gap-1 text-sm sm:text-base">
-              FELT<span className="text-amber-400">SENSE</span>
-              <span className="hidden sm:inline text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium">
-                {tableConfig.gameMode === 'limp_punisher' ? '🎯 Limp-Punisher' : `${tableConfig.tableSize}-Max $1/$2`}
-              </span>
+      {/* Standardized Casino Top Navigation Bar */}
+      <TableTopBar
+        mode="game"
+        title="FeltSense"
+        subtitle={`${tableConfig.tableSize}-Max $1/$2`}
+        badge={
+          tableConfig.gameMode === 'limp_punisher' ? (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 font-medium">
+              🎯 Limp-Punisher
             </span>
+          ) : undefined
+        }
+        icon={
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-amber-600 to-amber-400 flex items-center justify-center font-black text-black text-sm shadow">
+            ♠
           </div>
-
-          {/* Theme selector */}
-          <div className="hidden xl:flex items-center gap-1 ml-1 bg-zinc-900/90 rounded-md p-0.5 border border-zinc-800 text-xs">
-            {(Object.keys(THEMES) as Array<keyof typeof THEMES>).map((k) => (
-              <button
-                key={k}
-                onClick={() => setThemeKey(k)}
-                className={`px-2 py-0.5 rounded text-[11px] transition-colors cursor-pointer ${
-                  themeKey === k ? 'bg-zinc-700 text-white font-medium' : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                {THEMES[k].name}
-              </button>
-            ))}
+        }
+        floorHref="/"
+        onExitToLobby={quitToLobby}
+        lobbyLabel="Lobby"
+        centerStatus={
+          <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 px-2.5 py-1 rounded-full text-zinc-300 text-[11px] shadow-sm">
+            <span className="text-zinc-500">Hand:</span> <span className="font-semibold text-white">#{handsPlayed || 1}</span>
           </div>
-
-          {/* Game Speed Selector */}
-          <div className="hidden lg:flex items-center gap-1 bg-zinc-900/90 border border-zinc-800 rounded-md p-0.5 text-xs">
-            <span className="text-[10px] text-zinc-500 px-1 font-mono uppercase">Speed:</span>
-            {(['relaxed', 'normal', 'fast'] as const).map((s) => (
-              <button
-                key={s}
-                onClick={() => setGameSpeed(s)}
-                className={clsx(
-                  'px-2 py-0.5 rounded text-[10px] font-semibold transition cursor-pointer',
-                  gameSpeed === s ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'text-zinc-400 hover:text-white'
-                )}
-              >
-                {s === 'relaxed' ? '🐢 Relaxed' : s === 'normal' ? '⚡ Normal' : '🚀 Fast'}
-              </button>
-            ))}
-          </div>
-
-          {/* 3D Hole Card Peek / Auto-Reveal Toggle */}
+        }
+        bankroll={userProfile.careerBankroll}
+        userProfile={userProfile}
+        onProfileClick={() => setIsProfileOpen(true)}
+        soundMuted={soundMuted}
+        onToggleMute={toggleMute}
+        onOpenStats={() => setIsStatsOpen(true)}
+        speed={gameSpeed}
+        onSpeedChange={setGameSpeed}
+        themes={(Object.keys(THEMES) as Array<keyof typeof THEMES>).map((k) => ({
+          id: k,
+          label: THEMES[k].name,
+          active: themeKey === k,
+          onClick: () => setThemeKey(k),
+        }))}
+        coachPosition={coachPosition}
+        onCoachPositionChange={setCoachPosition}
+        logPosition={logPosition}
+        onLogPositionChange={setLogPosition}
+        customSettingsTitle="Hole Card Visibility"
+        customSettings={
           <button
             onClick={() => setAlwaysRevealHoleCards(!alwaysRevealHoleCards)}
             className={clsx(
-              'hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[11px] font-semibold transition cursor-pointer',
+              'w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer',
               alwaysRevealHoleCards
                 ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
                 : 'bg-amber-950/60 border-amber-500/40 text-amber-300'
             )}
             title="Toggle between 3D Blind Card Peeking and Always Face-Up Hole Cards"
           >
-            {alwaysRevealHoleCards ? <Eye size={13} /> : <EyeOff size={13} />}
-            <span>{alwaysRevealHoleCards ? 'Cards: Face-Up' : 'Cards: 3D Peek'}</span>
-          </button>
-        </div>
-
-        <div className="flex items-center gap-1.5 sm:gap-2 text-xs">
-          {/* AI Coach Pin Placement Pill */}
-          <div className="flex items-center gap-1 bg-zinc-900/90 border border-zinc-800 rounded-md p-0.5">
-            <span className="text-[10px] text-emerald-400 font-semibold px-1">Coach:</span>
-            {(['left', 'bottom', 'right', 'hidden'] as const).map((pos) => (
-              <button
-                key={pos}
-                onClick={() => setCoachPosition(pos)}
-                className={clsx(
-                  'px-1.5 py-0.5 rounded text-[10px] font-semibold transition cursor-pointer capitalize',
-                  coachPosition === pos ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40' : 'text-zinc-400 hover:text-white'
-                )}
-              >
-                {pos === 'hidden' ? 'Off' : pos}
-              </button>
-            ))}
-          </div>
-
-          {/* Dealer Log Placement Pill */}
-          <div className="flex items-center gap-1 bg-zinc-900/90 border border-zinc-800 rounded-md p-0.5">
-            <span className="text-[10px] text-amber-400 font-semibold px-1">Log:</span>
-            {(['left', 'bottom', 'right', 'hidden'] as const).map((pos) => (
-              <button
-                key={pos}
-                onClick={() => setLogPosition(pos)}
-                className={clsx(
-                  'px-1.5 py-0.5 rounded text-[10px] font-semibold transition cursor-pointer capitalize',
-                  logPosition === pos ? 'bg-amber-950 text-amber-300 border border-amber-500/40' : 'text-zinc-400 hover:text-white'
-                )}
-              >
-                {pos === 'hidden' ? 'Off' : pos}
-              </button>
-            ))}
-          </div>
-
-          <div className="hidden md:flex items-center gap-2 bg-zinc-900 border border-zinc-800 px-2.5 py-1 rounded-full text-zinc-300 text-[11px]">
-            <span className="text-zinc-500">Hand:</span> <span className="font-semibold text-white">#{handsPlayed || 1}</span>
-          </div>
-
-          <button
-            onClick={() => setIsProfileOpen(true)}
-            className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 transition cursor-pointer"
-            title="Player Profile & Career Bankroll"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={userProfile.avatarUrl}
-              alt={userProfile.nickname}
-              style={{ width: '18px', height: '18px', borderRadius: '9999px', objectFit: 'cover' }}
-              className="w-4.5 h-4.5 rounded-full object-cover border border-amber-400"
-            />
-            <span className="hidden sm:inline font-bold text-[11px] text-amber-300 max-w-[80px] truncate">
-              {userProfile.nickname}
+            <span className="flex items-center gap-1.5">
+              {alwaysRevealHoleCards ? <Eye size={13} /> : <EyeOff size={13} />}
+              <span>{alwaysRevealHoleCards ? 'Always Face-Up' : '3D Blind Peek'}</span>
+            </span>
+            <span className="text-[10px] text-zinc-400 font-mono">
+              {alwaysRevealHoleCards ? 'Open' : 'Peeking'}
             </span>
           </button>
-
-          <button 
-            onClick={toggleMute} 
-            className="p-1.5 rounded-lg bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 transition cursor-pointer"
-            title={soundMuted ? 'Unmute' : 'Mute'}
-          >
-            {soundMuted ? <VolumeX size={15} className="text-rose-400" /> : <Volume2 size={15} className="text-emerald-400" />}
-          </button>
-
-          <button 
-            onClick={() => setIsStatsOpen(true)}
-            className="p-1.5 rounded-lg bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 transition cursor-pointer"
-            title="Session Analytics & Blunder Ledger"
-          >
-            <BarChart3 size={15} />
-          </button>
-
-          <button 
-            onClick={quitToLobby}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-700 transition font-medium cursor-pointer text-xs"
-            title="Return to Poker Table Selector"
-          >
-            <LogOut size={13} />
-            <span className="hidden sm:inline">Lobby</span>
-          </button>
-
-          <Link
-            href="/"
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/60 hover:text-white transition font-medium text-xs"
-            title="Return to Grand Casino Floor"
-          >
-            <ArrowLeft size={13} />
-            <span className="hidden sm:inline">Casino Floor</span>
-          </Link>
-        </div>
-      </header>
+        }
+      />
 
       {/* Main Game Stage (Auto-Reorganizes based on Left/Right Docked Panels) */}
       <div className={clsx(
@@ -504,10 +613,28 @@ export default function Home() {
               <div 
                 className={`w-full h-full rounded-[115px] sm:rounded-[175px] md:rounded-[215px] relative overflow-hidden flex items-center justify-center border ${currentTheme.innerBorder} shadow-[inset_0_10px_30px_rgba(0,0,0,0.7)]`}
                 style={{ background: currentTheme.felt }}
+                onClick={() => {
+                  if (isPhysicalDealing || isDealingHand) {
+                    handleFastForward();
+                  }
+                }}
               >
                 
                 {/* Subtle Felt Texture Overlay */}
                 <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:6px_6px] pointer-events-none" />
+
+                {/* Physical Dealer Card Deck Tray at Top Center Felt */}
+                <div
+                  className="absolute top-[13%] left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-none select-none z-10"
+                  title="Dealer Deck Tray"
+                >
+                  <div className="relative w-8 h-11 sm:w-9 sm:h-13 rounded border border-amber-500/40 bg-gradient-to-br from-red-800 to-red-950 shadow-[0_4px_12px_rgba(0,0,0,0.8)] flex items-center justify-center">
+                    <div className="absolute inset-0 border border-white/10 rounded-[2px] m-0.5" />
+                    <span className="text-[8px] sm:text-[9px] font-bold text-amber-300/80 tracking-tighter uppercase font-serif">GD</span>
+                    <div className="absolute -bottom-1 left-0 right-0 h-1 bg-white/40 rounded-b border-t border-black/30" />
+                    <div className="absolute -bottom-2 left-0.5 right-0.5 h-1 bg-zinc-300/50 rounded-b border-t border-black/30" />
+                  </div>
+                </div>
 
                 {/* Table Center Watermark */}
                 <div className="absolute text-center select-none pointer-events-none opacity-15">
@@ -518,78 +645,147 @@ export default function Home() {
                 {/* Table Center: Live Action Ticker, Timing Tell, Pot, and Community Cards */}
                 <div className="flex flex-col items-center z-10 -mt-2">
                   
-                  {/* Live Action Feed Ticker + Physical Timing Tell */}
-                  <div className="mb-2 min-h-[28px] flex flex-col items-center justify-center gap-1">
-                    {lastActionEvent ? (
-                      <>
-                        <div
-                          key={lastActionEvent.timestamp}
-                          className="animate-ticker-slide flex items-center gap-2 bg-zinc-950/90 backdrop-blur-md px-3.5 py-1 rounded-full border border-zinc-700/80 shadow-2xl text-[11px] sm:text-xs"
-                        >
-                          <span className="font-bold text-zinc-200">{lastActionEvent.playerName}</span>
-                          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400">
-                            {lastActionEvent.position}
-                          </span>
-                          <span
-                            className={clsx(
-                              'font-black uppercase tracking-wider px-2 py-0.5 rounded-full text-[10px] shadow',
-                              lastActionEvent.type === 'fold' && 'bg-rose-600/90 text-white',
-                              lastActionEvent.type === 'check' && 'bg-teal-600/90 text-white',
-                              lastActionEvent.type === 'call' && 'bg-sky-600/90 text-white',
-                              lastActionEvent.type === 'bet' && 'bg-emerald-600/90 text-white',
-                              lastActionEvent.type === 'raise' && 'bg-amber-500 text-black',
-                              lastActionEvent.type === 'allin' && 'bg-gradient-to-r from-rose-600 to-amber-500 text-white'
-                            )}
-                          >
-                            {lastActionEvent.label}
-                          </span>
+                  {/* Showdown Winner Floating Plaque (Compact & Non-Obscuring) OR Live Action & Pot */}
+                  {phase === 'SHOWDOWN' ? (
+                    !isWinnerCardDismissed && lastHandResult ? (
+                      <div className="pointer-events-auto mb-2.5 max-w-sm sm:max-w-md w-full px-3 py-1.5 rounded-xl bg-zinc-950/90 border border-amber-500/60 shadow-[0_0_30px_rgba(0,0,0,0.8)] backdrop-blur-md flex items-center justify-between gap-2.5 animate-action-pop">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-amber-500 via-amber-400 to-yellow-300 flex items-center justify-center text-black text-sm font-black shrink-0 shadow border border-white/40">
+                            🏆
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <div className="flex items-center gap-1.5 truncate">
+                              <span className="text-xs sm:text-sm font-black text-white truncate">
+                                {lastHandResult.isHeroWinner ? (
+                                  <span className="text-emerald-400">YOU WON THE POT!</span>
+                                ) : (
+                                  <span>{lastHandResult.winnerNames} Won</span>
+                                )}
+                              </span>
+                              <span className="text-xs sm:text-sm font-black text-amber-300 shrink-0">
+                                +${lastHandResult.amount.toFixed(2)}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-zinc-300 font-semibold truncate">
+                              {lastHandResult.handName}
+                            </span>
+                          </div>
                         </div>
-                        {lastActionEvent.liveTell && (
-                          <div className="animate-ticker-slide px-3 py-0.5 rounded-full bg-amber-950/90 border border-amber-500/40 text-amber-300 text-[10px] font-semibold shadow-lg max-w-md text-center">
-                            ⏱️ {lastActionEvent.liveTell}
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {lastHandResult.winningCards && lastHandResult.winningCards.length > 0 && (
+                            <div className="hidden sm:flex items-center -space-x-2 mr-1">
+                              {lastHandResult.winningCards.map((c, i) => (
+                                <Card key={i} card={c} size="sm" />
+                              ))}
+                            </div>
+                          )}
+                          <button
+                            onClick={() => setDismissedWinnerHandNumber(handsPlayed)}
+                            className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"
+                            title="Hide banner to inspect entire felt"
+                          >
+                            <EyeOff size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="pointer-events-auto mb-2 min-h-[28px] flex items-center">
+                        <button
+                          onClick={() => setDismissedWinnerHandNumber(null)}
+                          className="px-2.5 py-0.5 rounded-full bg-black/75 border border-zinc-700 hover:border-amber-400 text-[10px] text-zinc-400 hover:text-amber-300 transition cursor-pointer flex items-center gap-1 shadow backdrop-blur-sm"
+                        >
+                          <Eye size={12} />
+                          <span>Show Winner Banner</span>
+                        </button>
+                      </div>
+                    )
+                  ) : (
+                    <>
+                      {/* Live Action Feed Ticker + Physical Timing Tell */}
+                      <div className="mb-2 min-h-[28px] flex flex-col items-center justify-center gap-1">
+                        {lastActionEvent ? (
+                          <>
+                            <div
+                              key={lastActionEvent.timestamp}
+                              className="animate-ticker-slide flex items-center gap-2 bg-zinc-950/90 backdrop-blur-md px-3.5 py-1 rounded-full border border-zinc-700/80 shadow-2xl text-[11px] sm:text-xs"
+                            >
+                              <span className="font-bold text-zinc-200">{lastActionEvent.playerName}</span>
+                              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400">
+                                {lastActionEvent.position}
+                              </span>
+                              <span
+                                className={clsx(
+                                  'font-black uppercase tracking-wider px-2 py-0.5 rounded-full text-[10px] shadow',
+                                  lastActionEvent.type === 'fold' && 'bg-rose-600/90 text-white',
+                                  lastActionEvent.type === 'check' && 'bg-teal-600/90 text-white',
+                                  lastActionEvent.type === 'call' && 'bg-sky-600/90 text-white',
+                                  lastActionEvent.type === 'bet' && 'bg-emerald-600/90 text-white',
+                                  lastActionEvent.type === 'raise' && 'bg-amber-500 text-black',
+                                  lastActionEvent.type === 'allin' && 'bg-gradient-to-r from-rose-600 to-amber-500 text-white'
+                                )}
+                              >
+                                {lastActionEvent.label}
+                              </span>
+                            </div>
+                            {lastActionEvent.liveTell && (
+                              <div className="animate-ticker-slide px-3 py-0.5 rounded-full bg-amber-950/90 border border-amber-500/40 text-amber-300 text-[10px] font-semibold shadow-lg max-w-md text-center">
+                                ⏱️ {lastActionEvent.liveTell}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <div className="flex items-center gap-1.5 bg-black/50 backdrop-blur-sm px-3 py-1 rounded-full border border-white/10 text-[11px] text-zinc-300">
+                            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                            <span>
+                              {isHeroTurn
+                                ? 'Your Turn to Act'
+                                : `${players[activePlayerIndex]?.name || 'Player'} is acting...`}
+                            </span>
                           </div>
                         )}
-                      </>
-                    ) : (
-                      <div className="flex items-center gap-1.5 bg-black/50 backdrop-blur-sm px-3 py-1 rounded-full border border-white/10 text-[11px] text-zinc-300">
-                        <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-                        <span>
-                          {isHeroTurn
-                            ? 'Your Turn to Act'
-                            : `${players[activePlayerIndex]?.name || 'Player'} is acting...`}
-                        </span>
                       </div>
-                    )}
-                  </div>
 
-                  {/* Central Pot Display */}
-                  <div className="flex flex-col items-center mb-3">
-                    {pot > 0 && (
-                      <div key={`pot-${pot}`} className="mb-1 filter drop-shadow-lg animate-chip-toss">
-                        <ChipStack amount={pot} mode="bet" size="sm" showAmountLabel={false} />
+                      {/* Central Pot Display */}
+                      <div className="flex flex-col items-center mb-3">
+                        {pot > 0 && (
+                          <div key={`pot-${pot}`} className="mb-1 filter drop-shadow-lg animate-chip-toss">
+                            <ChipStack amount={pot} mode="bet" size="sm" showAmountLabel={false} />
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2 bg-black/65 backdrop-blur-md px-4 py-1.5 rounded-full border border-amber-500/40 shadow-xl">
+                          <div className="w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center text-black font-black text-[10px]">
+                            $
+                          </div>
+                          <span className="text-xs sm:text-sm font-bold text-amber-300 tracking-wider">
+                            TOTAL POT: <span className="text-white font-extrabold">${pot.toFixed(2)}</span>
+                          </span>
+                          <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.2 rounded font-mono">
+                            {(pot / 2).toFixed(0)} BB
+                          </span>
+                        </div>
                       </div>
-                    )}
-                    <div className="flex items-center gap-2 bg-black/65 backdrop-blur-md px-4 py-1.5 rounded-full border border-amber-500/40 shadow-xl">
-                      <div className="w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center text-black font-black text-[10px]">
-                        $
-                      </div>
-                      <span className="text-xs sm:text-sm font-bold text-amber-300 tracking-wider">
-                        TOTAL POT: <span className="text-white font-extrabold">${pot.toFixed(2)}</span>
-                      </span>
-                      <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.2 rounded font-mono">
-                        {(pot / 2).toFixed(0)} BB
-                      </span>
-                    </div>
-                  </div>
+                    </>
+                  )}
 
                   {/* 5 Community Cards */}
                   <div className="flex items-center gap-1.5 sm:gap-2">
-                    {communityCards.map((card, i) => (
-                      <div key={`${card.rank}-${card.suit}-${i}`} className="animate-action-pop">
-                        <Card card={card} size="md" />
-                      </div>
-                    ))}
-                    {Array.from({ length: 5 - communityCards.length }).map((_, i) => (
+                    {communityCards
+                      .slice(0, phase === 'SHOWDOWN' ? communityCards.length : visibleCommunityCount)
+                      .map((card, i) => (
+                        <div 
+                          key={`${card.rank}-${card.suit}-${i}`} 
+                          className={clsx(
+                            'animate-action-pop',
+                            lastHandResult?.wasRunout && phase === 'SHOWDOWN' && 'ring-1 ring-amber-400/60 rounded'
+                          )}
+                        >
+                          <Card card={card} size="md" />
+                        </div>
+                      ))}
+                    {Array.from({
+                      length: 5 - (phase === 'SHOWDOWN' ? communityCards.length : Math.min(communityCards.length, visibleCommunityCount)),
+                    }).map((_, i) => (
                       <div
                         key={`empty-${i}`}
                         className="w-10 h-14 sm:w-14 sm:h-20 rounded-md border border-white/20 bg-black/20 flex items-center justify-center"
@@ -599,88 +795,49 @@ export default function Home() {
                     ))}
                   </div>
 
-                  {/* Hand Strength / Board Category Pill */}
-                  <div className="mt-2.5 px-3 py-0.5 rounded-full bg-black/60 border border-emerald-500/30 text-[10px] sm:text-xs text-emerald-300 font-medium tracking-wide flex items-center gap-1.5 backdrop-blur-sm">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    {heroHandEval ? heroHandEval.name : phase === 'PREFLOP' ? 'Preflop Pocket' : `Street: ${phase}`}
-                  </div>
+                  {/* Hand Strength / Hand Realization Pill */}
+                  {phase === 'SHOWDOWN' ? (
+                    <div className="mt-2.5 px-3.5 py-1 rounded-full bg-black/85 border border-amber-500/40 text-[11px] sm:text-xs font-semibold tracking-wide flex items-center gap-2 shadow-xl backdrop-blur-md animate-action-pop">
+                      {lastHandResult?.heroPotentialHand?.wasFolded ? (
+                        <>
+                          <span className="text-amber-400 font-bold">🔮 What You Could Have Made:</span>
+                          <span className="text-white font-extrabold underline decoration-amber-400/60">
+                            {lastHandResult.heroPotentialHand.name}
+                          </span>
+                          {lastHandResult.heroPotentialHand.foldStreet && (
+                            <span className="text-[10px] text-amber-300/80 font-mono bg-zinc-900 border border-zinc-700 px-1.5 py-0.2 rounded">
+                              Folded {lastHandResult.heroPotentialHand.foldStreet}
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-emerald-400 font-bold">🎯 Your Hand:</span>
+                          <span className="text-white font-extrabold">
+                            {lastHandResult?.heroPotentialHand?.name || heroHandEval?.name || 'Showdown'}
+                          </span>
+                          {lastHandResult?.isHeroWinner && (
+                            <span className="text-[10px] bg-emerald-500/30 border border-emerald-400/50 text-emerald-300 font-black px-1.5 py-0.2 rounded uppercase">
+                              🏆 WINNER
+                            </span>
+                          )}
+                        </>
+                      )}
+                      {lastHandResult?.wasRunout && (
+                        <span className="text-[9px] text-zinc-400 font-mono border-l border-zinc-700 pl-2">
+                          (Board Runout)
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="mt-2.5 px-3 py-0.5 rounded-full bg-black/60 border border-emerald-500/30 text-[10px] sm:text-xs text-emerald-300 font-medium tracking-wide flex items-center gap-1.5 backdrop-blur-sm">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      {heroHandEval ? heroHandEval.name : phase === 'PREFLOP' ? 'Preflop Pocket' : `Street: ${phase}`}
+                    </div>
+                  )}
                 </div>
 
-                {/* Showdown & Hand Complete Winner Overlay */}
-                {phase === 'SHOWDOWN' && !replayRecord && !isStatsOpen && !selectedOpponent && !isProfileOpen && (
-                  <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/75 rounded-[115px] sm:rounded-[175px] md:rounded-[215px] backdrop-blur-md animate-in fade-in select-none">
-                    <div className="bg-gradient-to-b from-zinc-900 to-zinc-950 border-2 border-amber-500/60 p-5 sm:p-6 rounded-2xl flex flex-col items-center shadow-[0_0_60px_rgba(0,0,0,0.9)] text-center max-w-sm sm:max-w-md mx-4">
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-amber-500 via-amber-400 to-yellow-300 flex items-center justify-center text-black text-2xl mb-2 shadow-xl animate-bounce border-2 border-white/40">
-                        🏆
-                      </div>
 
-                      <h3 className="text-xl sm:text-2xl font-black tracking-wide">
-                        {lastHandResult?.isHeroWinner ? (
-                          <span className="text-emerald-400">YOU WON THE POT!</span>
-                        ) : (
-                          <span className="text-white">{lastHandResult?.winnerNames || 'Winner'} Won!</span>
-                        )}
-                      </h3>
-
-                      <div className="text-amber-300 font-black text-xl sm:text-2xl mt-0.5 tracking-wider">
-                        +${(lastHandResult?.amount ?? 0).toFixed(2)}
-                      </div>
-
-                      <div className="mt-2 mb-3 px-3.5 py-1 rounded-full bg-zinc-900/90 border border-zinc-700/80 text-xs font-semibold text-zinc-200">
-                        {lastHandResult?.handName || 'Winning Hand'}
-                      </div>
-
-                      {lastHandResult?.winningCards && lastHandResult.winningCards.length > 0 && (
-                        <div className="flex items-center gap-1.5 mb-4">
-                          {lastHandResult.winningCards.map((c, i) => (
-                            <Card key={i} card={c} size="md" />
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Action Buttons: Deal Next Hand / Rebuy / Replay Hand */}
-                      <div className="flex flex-wrap items-center justify-center gap-2.5">
-                        {isHeroBusted ? (
-                          canHeroRebuy ? (
-                            <button
-                              onClick={rebuyHero}
-                              className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-black font-black text-xs uppercase tracking-wider rounded-xl shadow-xl transform active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
-                            >
-                              <RefreshCw size={14} />
-                              <span>Rebuy ${tableConfig.buyInAmount} ({tableConfig.maxRebuys >= 99 ? '∞' : tableConfig.maxRebuys - rebuysUsed} Left)</span>
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => setIsStatsOpen(true)}
-                              className="px-5 py-2.5 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-xl transform active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
-                            >
-                              <BarChart3 size={14} />
-                              <span>Freezeout Bust • View Session Review</span>
-                            </button>
-                          )
-                        ) : (
-                          <button
-                            onClick={dealNextHand}
-                            className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-xl transform active:scale-95 transition-all cursor-pointer flex items-center gap-2 ring-2 ring-emerald-400/50"
-                          >
-                            <span>Deal Next Hand</span>
-                            <span className="text-[10px] text-white/60 font-mono bg-black/40 px-1.5 py-0.5 rounded">[Space]</span>
-                          </button>
-                        )}
-
-                        {lastHandRecord && (
-                          <button
-                            onClick={() => setReplayRecord(lastHandRecord)}
-                            className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-amber-300 border border-amber-500/40 font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg transition cursor-pointer flex items-center gap-1.5"
-                          >
-                            <RotateCcw size={13} />
-                            <span>Replay Hand</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
 
               </div>
             </div>
@@ -754,17 +911,47 @@ export default function Home() {
                       'relative flex items-center gap-1 mb-1.5 transition-all duration-300',
                       isHero ? '-space-x-3 mb-2 cursor-pointer group' : '-space-x-3',
                       isHero && isPeeking && '[transform:perspective(600px)_rotateX(16deg)_rotateY(-8deg)_translateY(-6px)]',
-                      player.hasFolded && 'animate-card-muck grayscale pointer-events-none'
+                      player.hasFolded && (isShowdown && isHero ? 'opacity-90 ring-1 ring-amber-500/40 rounded p-0.5 bg-black/40' : 'animate-card-muck grayscale pointer-events-none')
                     )}
                   >
-                    {player.holeCards.map((card, cIdx) => (
-                      <Card 
-                        key={cIdx} 
-                        card={showHoleCards ? card : { hidden: true }} 
-                        size={isHero ? 'md' : 'sm'} 
-                        className={isHero ? 'shadow-2xl transition-transform duration-200' : 'shadow'}
-                      />
-                    ))}
+                    {(() => {
+                      const visibleCount = isDealingActive
+                        ? (visibleHoleCounts[player.id] ?? 0)
+                        : 2;
+                      const cardsToRender = player.holeCards.slice(0, visibleCount);
+
+                      return (
+                        <>
+                          {cardsToRender.map((card, cIdx) => (
+                            <Card 
+                              key={cIdx} 
+                              card={showHoleCards ? card : { hidden: true }} 
+                              size={isHero ? 'md' : 'sm'} 
+                              className={clsx(
+                                isHero ? 'shadow-2xl transition-transform duration-200' : 'shadow',
+                                'animate-action-pop'
+                              )}
+                            />
+                          ))}
+                          {isDealingActive && Array.from({ length: 2 - cardsToRender.length }).map((_, i) => (
+                            <div
+                              key={`empty-placeholder-${i}`}
+                              className={clsx(
+                                'rounded-md border border-dashed border-white/10 bg-black/25 flex items-center justify-center opacity-40',
+                                isHero ? 'w-10 h-14 sm:w-14 sm:h-20' : 'w-6 h-9 sm:w-7 sm:h-10'
+                              )}
+                            />
+                          ))}
+                        </>
+                      );
+                    })()}
+
+                    {/* Showdown realization callout on Hero's folded pocket cards */}
+                    {isShowdown && isHero && player.hasFolded && (
+                      <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-black/95 border border-amber-500/60 text-amber-300 text-[8px] sm:text-[9px] font-bold px-1.5 py-0.2 rounded-full whitespace-nowrap shadow-xl">
+                        Folded • {lastHandResult?.heroPotentialHand?.name || 'Folded'}
+                      </div>
+                    )}
 
                     {/* 3D Peek Helper Pill on Hero Cards when Face-Down */}
                     {isHero && !areHeroCardsFaceUp && !player.hasFolded && (
@@ -956,6 +1143,12 @@ export default function Home() {
             );
           })}
 
+          {/* Shared Physical Card Dealing Overlay */}
+          <CardDealingOverlay
+            flyingCards={flyingCards}
+            onCardLanded={onCardLanded}
+          />
+
         </div>
 
         {/* Wall-Docked / Floating AI Coach Panel */}
@@ -1007,142 +1200,214 @@ export default function Home() {
           </div>
         )}
 
-        {/* Betting Action Controls OR Pre-Action Staging Bar */}
+        {/* Betting Action Controls OR Showdown Hand Realization Action Bar */}
         <div className="flex-1 max-w-3xl flex flex-col justify-between h-full py-0.5">
-          
-          {/* Top Bar: Pre-Action Checkboxes (when waiting for turn) OR Bet Sizing Presets + Pot Odds Badge */}
-          {!isHeroTurn && phase !== 'SHOWDOWN' && hero && !hero.hasFolded ? (
-            <div className="flex items-center justify-between gap-2 bg-zinc-900/90 border border-zinc-800 rounded-lg px-3 py-1">
-              <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-400">
-                Pre-Action Staging:
-              </span>
-              <div className="flex items-center gap-2">
-                {(
-                  [
-                    { id: 'check_fold', label: 'Check / Fold' },
-                    { id: 'check', label: 'Check' },
-                    { id: 'call_any', label: `Call ${toCall > 0 ? `$${toCall}` : 'Any'}` },
-                  ] as Array<{ id: Exclude<PreActionSelection, null>; label: string }>
-                ).map((item) => {
-                  const active = preAction === item.id;
-                  return (
+          {phase === 'SHOWDOWN' ? (
+            <div className="flex items-center justify-between gap-3 h-full px-3 py-1.5 bg-zinc-950/80 border border-zinc-800 rounded-xl shadow-lg">
+              {/* Left: Summary of Hand Outcome & Hero Realization */}
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-500/50 flex items-center justify-center text-amber-400 font-black text-sm shrink-0">
+                  🏆
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-xs font-bold text-white truncate">
+                    {lastHandResult?.isHeroWinner ? (
+                      <span className="text-emerald-400">You won ${lastHandResult?.amount.toFixed(2)} with {lastHandResult?.handName}!</span>
+                    ) : (
+                      <span>{lastHandResult?.winnerNames || 'Winner'} won ${lastHandResult?.amount.toFixed(2)} ({lastHandResult?.handName})</span>
+                    )}
+                  </span>
+                  <span className="text-[10px] text-zinc-400 truncate">
+                    {lastHandResult?.heroPotentialHand?.wasFolded ? (
+                      <span className="text-amber-300">
+                        Folded {lastHandResult.heroPotentialHand.foldStreet || 'early'} • Potential: <strong className="text-white">{lastHandResult.heroPotentialHand.name}</strong>
+                      </span>
+                    ) : (
+                      <span>Your hand: <strong className="text-emerald-300">{lastHandResult?.heroPotentialHand?.name || heroHandEval?.name}</strong></span>
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              {/* Right: Deal Next Hand / Rebuy / Replay Controls */}
+              <div className="flex items-center gap-2 shrink-0">
+                {lastHandRecord && (
+                  <button
+                    onClick={() => setReplayRecord(lastHandRecord)}
+                    className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-amber-300 border border-amber-500/40 font-bold text-xs uppercase tracking-wider rounded-lg transition cursor-pointer flex items-center gap-1.5"
+                    title="Replay this hand street-by-street"
+                  >
+                    <RotateCcw size={13} />
+                    <span className="hidden sm:inline">Replay</span>
+                  </button>
+                )}
+
+                {isHeroBusted ? (
+                  canHeroRebuy ? (
                     <button
-                      key={item.id}
-                      onClick={() => setPreAction(active ? null : item.id)}
-                      className={clsx(
-                        'px-2.5 py-1 rounded text-xs font-bold flex items-center gap-1.5 border transition cursor-pointer',
-                        active
-                          ? 'bg-amber-500/20 border-amber-400 text-amber-300 shadow'
-                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white'
-                      )}
+                      onClick={rebuyHero}
+                      className="px-4 py-2 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-black font-black text-xs uppercase tracking-wider rounded-lg shadow-xl active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
                     >
-                      {active ? <CheckSquare size={12} className="text-amber-400" /> : <Square size={12} />}
-                      <span>{item.label}</span>
+                      <RefreshCw size={14} />
+                      <span>Rebuy ${tableConfig.buyInAmount}</span>
                     </button>
-                  );
-                })}
+                  ) : (
+                    <button
+                      onClick={() => setIsStatsOpen(true)}
+                      className="px-4 py-2 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 text-white font-black text-xs uppercase tracking-wider rounded-lg shadow-xl cursor-pointer flex items-center gap-1.5"
+                    >
+                      <BarChart3 size={14} />
+                      <span>Session Review</span>
+                    </button>
+                  )
+                ) : (
+                  <button
+                    onClick={handleDealNextHand}
+                    className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs uppercase tracking-wider rounded-lg shadow-xl active:scale-95 transition-all cursor-pointer flex items-center gap-2 ring-2 ring-emerald-400/50"
+                  >
+                    <span>Deal Next Hand</span>
+                    <span className="text-[10px] text-white/70 font-mono bg-black/40 px-1.5 py-0.5 rounded">[Space]</span>
+                  </button>
+                )}
               </div>
             </div>
           ) : (
-            <div className={`flex items-center justify-between gap-2 ${!isHeroTurn ? 'opacity-40 pointer-events-none' : 'opacity-100'}`}>
-              <div className="flex items-center gap-1 sm:gap-1.5">
-                <button 
-                  onClick={() => setPreset('MIN')}
-                  className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold border border-zinc-700 transition cursor-pointer"
-                >
-                  MIN (${minPossibleBet})
-                </button>
-                <button 
-                  onClick={() => setPreset('HALF')}
-                  className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold border border-zinc-700 transition cursor-pointer"
-                >
-                  1/2 POT
-                </button>
-                <button 
-                  onClick={() => setPreset('THREE_FOURTH')}
-                  className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold border border-zinc-700 transition cursor-pointer"
-                >
-                  3/4 POT
-                </button>
-                <button 
-                  onClick={() => setPreset('POT')}
-                  className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold border border-zinc-700 transition cursor-pointer"
-                >
-                  POT
-                </button>
-                <button 
-                  onClick={() => setPreset('ALLIN')}
-                  className="px-2 py-1 rounded bg-rose-950/70 hover:bg-rose-900 text-rose-300 text-xs font-semibold border border-rose-800 transition cursor-pointer"
-                >
-                  MAX
-                </button>
-              </div>
+            <>
+              {/* Top Bar: Pre-Action Checkboxes (when waiting for turn) OR Bet Sizing Presets + Pot Odds Badge */}
+              {!isHeroTurn && hero && !hero.hasFolded ? (
+                <div className="flex items-center justify-between gap-2 bg-zinc-900/90 border border-zinc-800 rounded-lg px-3 py-1">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-400">
+                    Pre-Action Staging:
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {(
+                      [
+                        { id: 'check_fold', label: 'Check / Fold' },
+                        { id: 'check', label: 'Check' },
+                        { id: 'call_any', label: `Call ${toCall > 0 ? `$${toCall}` : 'Any'}` },
+                      ] as Array<{ id: Exclude<PreActionSelection, null>; label: string }>
+                    ).map((item) => {
+                      const active = preAction === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => setPreAction(active ? null : item.id)}
+                          className={clsx(
+                            'px-2.5 py-1 rounded text-xs font-bold flex items-center gap-1.5 border transition cursor-pointer',
+                            active
+                              ? 'bg-amber-500/20 border-amber-400 text-amber-300 shadow'
+                              : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white'
+                          )}
+                        >
+                          {active ? <CheckSquare size={12} className="text-amber-400" /> : <Square size={12} />}
+                          <span>{item.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className={`flex items-center justify-between gap-2 ${!isHeroTurn ? 'opacity-40 pointer-events-none' : 'opacity-100'}`}>
+                  <div className="flex items-center gap-1 sm:gap-1.5">
+                    <button 
+                      onClick={() => setPreset('MIN')}
+                      className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold border border-zinc-700 transition cursor-pointer"
+                    >
+                      MIN (${minPossibleBet})
+                    </button>
+                    <button 
+                      onClick={() => setPreset('HALF')}
+                      className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold border border-zinc-700 transition cursor-pointer"
+                    >
+                      1/2 POT
+                    </button>
+                    <button 
+                      onClick={() => setPreset('THREE_FOURTH')}
+                      className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold border border-zinc-700 transition cursor-pointer"
+                    >
+                      3/4 POT
+                    </button>
+                    <button 
+                      onClick={() => setPreset('POT')}
+                      className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold border border-zinc-700 transition cursor-pointer"
+                    >
+                      POT
+                    </button>
+                    <button 
+                      onClick={() => setPreset('ALLIN')}
+                      className="px-2 py-1 rounded bg-rose-950/70 hover:bg-rose-900 text-rose-300 text-xs font-semibold border border-rose-800 transition cursor-pointer"
+                    >
+                      MAX
+                    </button>
+                  </div>
 
-              {/* Live Pot Odds & Breakeven Equity Visualizer Badge */}
-              {toCall > 0 && (
-                <div
-                  className={clsx(
-                    'hidden sm:flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[10px] font-mono font-bold',
-                    isPositivePotOdds
-                      ? 'bg-emerald-950/80 border-emerald-500/40 text-emerald-300'
-                      : 'bg-amber-950/80 border-amber-500/40 text-amber-300'
+                  {/* Live Pot Odds & Breakeven Equity Visualizer Badge */}
+                  {toCall > 0 && (
+                    <div
+                      className={clsx(
+                        'hidden sm:flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[10px] font-mono font-bold',
+                        isPositivePotOdds
+                          ? 'bg-emerald-950/80 border-emerald-500/40 text-emerald-300'
+                          : 'bg-amber-950/80 border-amber-500/40 text-amber-300'
+                      )}
+                      title={`Calling $${toCall} into $${pot + toCall} total pot requires ${requiredPotOddsPct}% equity. Your estimated equity is ${heroEquityPct}%.`}
+                    >
+                      <span className={clsx('w-1.5 h-1.5 rounded-full', isPositivePotOdds ? 'bg-emerald-400' : 'bg-amber-400')} />
+                      <span>Requires {requiredPotOddsPct}% Eq</span>
+                      <span className="text-zinc-500">•</span>
+                      <span>Hero {heroEquityPct}%</span>
+                    </div>
                   )}
-                  title={`Calling $${toCall} into $${pot + toCall} total pot requires ${requiredPotOddsPct}% equity. Your estimated equity is ${heroEquityPct}%.`}
+
+                  {/* Slider with exact input value */}
+                  <div className="flex items-center gap-2 flex-1 max-w-xs">
+                    <input 
+                      type="range" 
+                      min={minPossibleBet} 
+                      max={maxBet} 
+                      step={1}
+                      value={raiseAmount}
+                      onChange={(e) => setCustomRaiseAmount(Number(e.target.value))}
+                      className="w-full accent-emerald-500 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
+                    />
+                    <div className="bg-zinc-900 border border-zinc-700 px-2 py-0.5 rounded text-xs font-mono font-bold text-emerald-400 min-w-[54px] text-center">
+                      ${raiseAmount}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Primary Action Buttons */}
+              <div className={`grid grid-cols-3 gap-2 sm:gap-4 mt-1 ${!isHeroTurn ? 'opacity-40 pointer-events-none' : 'opacity-100'}`}>
+                <button 
+                  onClick={() => handleAction('fold')}
+                  className="py-2.5 sm:py-3 rounded-lg bg-gradient-to-b from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-white font-extrabold text-sm sm:text-base tracking-wider uppercase shadow-lg shadow-rose-950/50 border border-rose-500/50 active:scale-[0.98] transition cursor-pointer"
                 >
-                  <span className={clsx('w-1.5 h-1.5 rounded-full', isPositivePotOdds ? 'bg-emerald-400' : 'bg-amber-400')} />
-                  <span>Requires {requiredPotOddsPct}% Eq</span>
-                  <span className="text-zinc-500">•</span>
-                  <span>Hero {heroEquityPct}%</span>
-                </div>
-              )}
+                  FOLD
+                </button>
 
-              {/* Slider with exact input value */}
-              <div className="flex items-center gap-2 flex-1 max-w-xs">
-                <input 
-                  type="range" 
-                  min={minPossibleBet} 
-                  max={maxBet} 
-                  step={1}
-                  value={raiseAmount}
-                  onChange={(e) => setCustomRaiseAmount(Number(e.target.value))}
-                  className="w-full accent-emerald-500 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
-                />
-                <div className="bg-zinc-900 border border-zinc-700 px-2 py-0.5 rounded text-xs font-mono font-bold text-emerald-400 min-w-[54px] text-center">
-                  ${raiseAmount}
-                </div>
+                <button 
+                  onClick={() => handleAction(canCheck ? 'check' : 'call')}
+                  className="py-2.5 sm:py-3 rounded-lg bg-gradient-to-b from-sky-600 to-sky-700 hover:from-sky-500 hover:to-sky-600 text-white font-extrabold text-sm sm:text-base tracking-wider uppercase shadow-lg shadow-sky-950/50 border border-sky-500/50 active:scale-[0.98] transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <span>{canCheck ? 'CHECK' : 'CALL'}</span>
+                  {!canCheck && (
+                    <span className="text-xs bg-black/30 px-1.5 py-0.5 rounded font-mono font-normal">
+                      ${toCall} ({requiredPotOddsPct}% Eq)
+                    </span>
+                  )}
+                </button>
+
+                <button 
+                  onClick={() => handleAction(currentBet === 0 ? 'bet' : 'raise', raiseAmount)}
+                  className="py-2.5 sm:py-3 rounded-lg bg-gradient-to-b from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white font-extrabold text-sm sm:text-base tracking-wider uppercase shadow-lg shadow-emerald-950/50 border border-emerald-500/50 active:scale-[0.98] transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <span>{currentBet === 0 ? 'BET' : 'RAISE TO'}</span>
+                  <span className="text-xs bg-black/30 px-1.5 py-0.5 rounded font-mono font-normal">${raiseAmount}</span>
+                </button>
               </div>
-            </div>
+            </>
           )}
-
-          {/* Primary Action Buttons */}
-          <div className={`grid grid-cols-3 gap-2 sm:gap-4 mt-1 ${!isHeroTurn ? 'opacity-40 pointer-events-none' : 'opacity-100'}`}>
-            <button 
-              onClick={() => handleAction('fold')}
-              className="py-2.5 sm:py-3 rounded-lg bg-gradient-to-b from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-white font-extrabold text-sm sm:text-base tracking-wider uppercase shadow-lg shadow-rose-950/50 border border-rose-500/50 active:scale-[0.98] transition cursor-pointer"
-            >
-              FOLD
-            </button>
-
-            <button 
-              onClick={() => handleAction(canCheck ? 'check' : 'call')}
-              className="py-2.5 sm:py-3 rounded-lg bg-gradient-to-b from-sky-600 to-sky-700 hover:from-sky-500 hover:to-sky-600 text-white font-extrabold text-sm sm:text-base tracking-wider uppercase shadow-lg shadow-sky-950/50 border border-sky-500/50 active:scale-[0.98] transition flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <span>{canCheck ? 'CHECK' : 'CALL'}</span>
-              {!canCheck && (
-                <span className="text-xs bg-black/30 px-1.5 py-0.5 rounded font-mono font-normal">
-                  ${toCall} ({requiredPotOddsPct}% Eq)
-                </span>
-              )}
-            </button>
-
-            <button 
-              onClick={() => handleAction(currentBet === 0 ? 'bet' : 'raise', raiseAmount)}
-              className="py-2.5 sm:py-3 rounded-lg bg-gradient-to-b from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white font-extrabold text-sm sm:text-base tracking-wider uppercase shadow-lg shadow-emerald-950/50 border border-emerald-500/50 active:scale-[0.98] transition flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <span>{currentBet === 0 ? 'BET' : 'RAISE TO'}</span>
-              <span className="text-xs bg-black/30 px-1.5 py-0.5 rounded font-mono font-normal">${raiseAmount}</span>
-            </button>
-          </div>
 
         </div>
 

@@ -1,3 +1,5 @@
+import { secureRandom } from '@/lib/casino/random';
+
 export type Suit = 'h' | 'd' | 'c' | 's';
 export type Rank = '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | 'T' | 'J' | 'Q' | 'K' | 'A';
 
@@ -142,7 +144,7 @@ export function createShoe(numDecks = 6, seed?: number): ShoeState {
     }
   } else {
     for (let i = cards.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = Math.floor(secureRandom() * (i + 1));
       [cards[i], cards[j]] = [cards[j], cards[i]];
     }
   }

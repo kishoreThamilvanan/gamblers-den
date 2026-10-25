@@ -320,12 +320,9 @@ export default function CasinoFloorPage() {
         </div>
 
         {/* Footer */}
-        <footer className="border-t border-white/10 pt-6 text-center text-xs text-zinc-500 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <footer className="border-t border-white/10 pt-6 text-center text-xs text-zinc-500 flex flex-col sm:flex-row items-center justify-center gap-3">
           <span>
             Gambler&apos;s Den Resort &amp; Casino &bull; Educational Casino Simulation &bull; Simulated Currency Only
-          </span>
-          <span className="text-[11px] font-mono text-zinc-600">
-            Owner Access: ⌘⇧A
           </span>
         </footer>
       </main>

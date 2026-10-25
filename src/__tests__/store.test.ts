@@ -109,11 +109,42 @@ describe('Poker Game Store & State Machine (src/lib/store.ts)', () => {
     const state = usePokerStore.getState();
     assert.equal(state.phase, 'SHOWDOWN');
     assert.equal(state.pot, 0);
+    assert.equal(state.communityCards.length, 5);
     assert.ok(state.lastHandResult);
     assert.equal(state.lastHandResult.isHeroWinner, true);
     assert.equal(state.lastHandResult.byFold, true);
     assert.equal(state.lastHandResult.amount, 15);
+    assert.equal(state.lastHandResult.wasRunout, true);
+    assert.ok(state.lastHandResult.heroPotentialHand);
+    assert.equal(state.lastHandResult.heroPotentialHand.wasFolded, false);
     assert.ok(state.lastHandResult.winnerIds.includes('p0'));
+
+    usePokerStore.getState().quitToLobby();
+  });
+
+  it('runs out remaining community cards and computes hero potential hand when Hero folds early', () => {
+    usePokerStore.getState().startNewGame();
+
+    // Mark players 2..8 as folded, leaving Hero (0) and Player 1
+    const players = usePokerStore.getState().players.map((p, idx) => ({
+      ...p,
+      hasFolded: idx >= 2,
+    }));
+    usePokerStore.setState({ players, activePlayerIndex: 0, pot: 20 });
+
+    // Hero folds preflop -> Player 1 wins
+    usePokerStore.getState().playerAction('fold');
+
+    const state = usePokerStore.getState();
+    assert.equal(state.phase, 'SHOWDOWN');
+    assert.equal(state.communityCards.length, 5);
+    assert.ok(state.lastHandResult);
+    assert.equal(state.lastHandResult.isHeroWinner, false);
+    assert.equal(state.lastHandResult.byFold, true);
+    assert.equal(state.lastHandResult.wasRunout, true);
+    assert.ok(state.lastHandResult.heroPotentialHand);
+    assert.equal(state.lastHandResult.heroPotentialHand.wasFolded, true);
+    assert.equal(state.lastHandResult.heroPotentialHand.foldStreet, 'PREFLOP');
 
     usePokerStore.getState().quitToLobby();
   });

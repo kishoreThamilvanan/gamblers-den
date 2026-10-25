@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import Link from 'next/link';
 import { usePokerStore } from '@/lib/store';
 import { AuthGateView } from '@/components/poker/AuthGateView';
 import { UserProfileModal } from '@/components/poker/UserProfileModal';
@@ -34,15 +33,14 @@ import { DealerChipFloat } from '@/components/blackjack/DealerChipFloat';
 import { DealingShoe } from '@/components/blackjack/DealingShoe';
 import { DiscardRack } from '@/components/blackjack/DiscardRack';
 import { BlackjackFeltRules } from '@/components/blackjack/BlackjackFeltRules';
+import { BlackjackLobbyView } from '@/components/blackjack/BlackjackLobbyView';
+import { CardDealingOverlay, useCardDealingAnimation, TableTopBar } from '@/components/casino';
+import { getSavedSessions, saveSession, deleteSession } from '@/lib/sessions/sessionManager';
+import { BlackjackSession, BlackjackTableConfig } from '@/lib/sessions/types';
 import {
-  ArrowLeft,
-  Volume2,
-  VolumeX,
-  Coins,
   Sparkles,
   Info,
   Flame,
-  MessageSquare,
   UserPlus,
   X,
   Users,
@@ -68,12 +66,15 @@ export interface TableSeat {
 
 // 5 Arc Positions (X% and Y% coordinates along the table felt arc)
 const SEAT_ARC_COORDS = [
-  { left: '15%', top: '56%' }, // Spot 1 - Far Left
-  { left: '32%', top: '65%' }, // Spot 2 - Mid Left
-  { left: '50%', top: '69%' }, // Spot 3 - Center (Hero anchor)
-  { left: '68%', top: '65%' }, // Spot 4 - Mid Right
-  { left: '85%', top: '56%' }, // Spot 5 - Far Right
+  { left: '15%', top: '56%', x: 15, y: 56 }, // Spot 1 - Far Left
+  { left: '32%', top: '65%', x: 32, y: 65 }, // Spot 2 - Mid Left
+  { left: '50%', top: '69%', x: 50, y: 69 }, // Spot 3 - Center (Hero anchor)
+  { left: '68%', top: '65%', x: 68, y: 65 }, // Spot 4 - Mid Right
+  { left: '85%', top: '56%', x: 85, y: 56 }, // Spot 5 - Far Right
 ];
+
+const SHOE_COORD = { x: 88, y: 14 };
+const DEALER_COORD = { x: 50, y: 18 };
 
 export default function BlackjackPage() {
   const { userProfile, soundMuted, toggleMute } = usePokerStore();
@@ -81,6 +82,23 @@ export default function BlackjackPage() {
 
   // Persistent Career Bankroll State
   const [bankroll, setBankroll] = useState<number>(userProfile?.careerBankroll ?? 2000);
+
+  // Lobby / Game View Mode & Session Persistence States
+  const [viewMode, setViewMode] = useState<'LOBBY' | 'GAME'>('LOBBY');
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [roundsPlayed, setRoundsPlayed] = useState<number>(0);
+  const [savedSessions, setSavedSessions] = useState<BlackjackSession[]>(() =>
+    getSavedSessions<BlackjackSession>('blackjack')
+  );
+  const [tableConfig, setTableConfig] = useState<BlackjackTableConfig>({
+    stakesTier: 'regular',
+    minBet: 25,
+    maxBet: 1000,
+    spotCount: 3,
+    autoFillBots: true,
+    deckCount: 6,
+    trainingMode: 'standard',
+  });
 
   // Sync bankroll updates back to profile and vault
   const updateVaultBankroll = useCallback((newBankroll: number) => {
@@ -117,7 +135,28 @@ export default function BlackjackPage() {
   // Visual Shoe / Mucking Animation States
   const [isDealingAnimation, setIsDealingAnimation] = useState<boolean>(false);
   const [isMuckingAnimation, setIsMuckingAnimation] = useState<boolean>(false);
-  const [dealSpeed, setDealSpeed] = useState<'relaxed' | 'normal'>('relaxed');
+  const [dealSpeed, setDealSpeed] = useState<'relaxed' | 'normal' | 'fast'>('relaxed');
+
+  // Shared Physical Card Dealing Animation Hook
+  const {
+    flyingCards,
+    isDealing: isPhysicalDealing,
+    dealSingleCard,
+    fastForward,
+    onCardLanded,
+  } = useCardDealingAnimation();
+
+  // Keyboard Space listener for fast-forwarding dealing animations
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && isPhysicalDealing) {
+        e.preventDefault();
+        fastForward();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPhysicalDealing, fastForward]);
 
   // Side Settlement Score Breakdown Details
   const [settlementDetails, setSettlementDetails] = useState<{
@@ -380,7 +419,7 @@ export default function BlackjackPage() {
   // DEALER TURN & SETTLEMENT
   // ============================================================================
   const triggerDealerTurn = useCallback(
-    (
+    async (
       currentHands: BlackjackHandState[],
       currentShoe: ShoeState,
       currentDealerCards: BlackjackCard[]
@@ -398,18 +437,30 @@ export default function BlackjackPage() {
       const dealerHoleEval = calculateHand([currentDealerCards[0], currentDealerCards[1]]);
       addLog('dealer', `Dealer reveals hole card [${currentDealerCards[1].rank}${currentDealerCards[1].suit}] (Dealer Total: ${dealerHoleEval.total})`);
 
-      let finalDealerCards = [...currentDealerCards];
+      const workingDealerCards = [...currentDealerCards];
 
       if (!allEnded) {
         const dealerRes = playDealerTurn(currentDealerCards, updatedShoe);
-        finalDealerCards = dealerRes.finalCards;
-        const finalEval = calculateHand(finalDealerCards);
-        if (finalDealerCards.length > 2) {
-          for (let i = 2; i < finalDealerCards.length; i++) {
-            const card = finalDealerCards[i];
-            addLog('dealer', `Dealer hits -> receives [${card.rank}${card.suit}]`);
-          }
+        const extraCards = dealerRes.finalCards.slice(2);
+
+        for (let i = 0; i < extraCards.length; i++) {
+          const card = extraCards[i];
+          await new Promise((r) => setTimeout(r, dealSpeed === 'fast' ? 70 : dealSpeed === 'relaxed' ? 280 : 140));
+          await dealSingleCard({
+            card,
+            faceDown: false,
+            origin: SHOE_COORD,
+            target: { x: DEALER_COORD.x + (i + 2) * 5, y: DEALER_COORD.y },
+            durationMs: dealSpeed === 'fast' ? 180 : dealSpeed === 'relaxed' ? 380 : 260,
+            onLanded: () => {
+              workingDealerCards.push(card);
+              setDealerCards([...workingDealerCards]);
+              addLog('dealer', `Dealer hits -> receives [${card.rank}${card.suit}]`);
+            },
+          });
         }
+
+        const finalEval = calculateHand(workingDealerCards);
         if (finalEval.isBusted) {
           addLog('alert', `Dealer BUSTS with ${finalEval.total}!`);
         } else {
@@ -419,10 +470,10 @@ export default function BlackjackPage() {
         addLog('dealer', 'All player hands busted or surrendered; dealer stands.');
       }
 
-      setDealerCards(finalDealerCards);
+      setDealerCards(workingDealerCards);
       setShoe(updatedShoe);
 
-      const finalDealerEval = calculateHand(finalDealerCards);
+      const finalDealerEval = calculateHand(workingDealerCards);
       const dTotal = finalDealerEval.total;
 
       // Settle each hand
@@ -430,7 +481,7 @@ export default function BlackjackPage() {
       let netHeroProfit = 0;
 
       const settledHands = currentHands.map((h) => {
-        const outcome = settleHand(h, finalDealerCards);
+        const outcome = settleHand(h, workingDealerCards);
         if (!h.isBot) {
           totalHeroPayout += outcome.payout;
           netHeroProfit += outcome.netProfit;
@@ -510,9 +561,42 @@ export default function BlackjackPage() {
       setGamePhase('settled');
 
       // Credit Hero payouts to vault
+      const finalBankroll = bankroll + totalHeroPayout;
       if (totalHeroPayout > 0) {
-        updateVaultBankroll(bankroll + totalHeroPayout);
+        updateVaultBankroll(finalBankroll);
       }
+
+      const nextRoundsPlayed = roundsPlayed + 1;
+      setRoundsPlayed(nextRoundsPlayed);
+
+      const sessionToSave: BlackjackSession = {
+        id: activeSessionId || `bj-${Date.now()}`,
+        gameType: 'blackjack',
+        createdAt: Date.now(),
+        lastPlayedAt: Date.now(),
+        handsPlayed: nextRoundsPlayed,
+        tableBankroll: finalBankroll,
+        bankroll: finalBankroll,
+        config: tableConfig,
+        spots: seats.map((s) => ({
+          id: `spot-${s.spotIndex}`,
+          seatNumber: s.spotIndex + 1,
+          bet: s.bet,
+          isBot: s.occupant !== 'hero' && s.occupant !== 'empty',
+          botName: s.bot?.name,
+        })),
+        recentOutcomes: [
+          {
+            roundNumber: nextRoundsPlayed,
+            dealerTotal: dTotal,
+            dealerBust: dTotal > 21,
+            netHeroProfit,
+            timestamp: Date.now(),
+          },
+        ],
+      };
+      const updated = saveSession<BlackjackSession>('blackjack', sessionToSave);
+      setSavedSessions(updated);
 
       const heroDetail = details.find((d) => d.isHero);
       if (heroDetail) {
@@ -526,7 +610,7 @@ export default function BlackjackPage() {
         setTableNotice(`Round settled. Net -$${Math.abs(netHeroProfit)}.`);
       }
     },
-    [addLog, updateVaultBankroll, bankroll]
+    [addLog, updateVaultBankroll, bankroll, dealSingleCard, dealSpeed, activeSessionId, roundsPlayed, tableConfig, seats]
   );
 
   // Helper to advance across hands clockwise
@@ -618,7 +702,8 @@ export default function BlackjackPage() {
     setDealerCards([]);
     setDealerHoleHidden(true);
 
-    const dealDelay = dealSpeed === 'relaxed' ? 280 : 150;
+    const flightDuration = dealSpeed === 'fast' ? 180 : dealSpeed === 'relaxed' ? 380 : 260;
+    const stepPause = dealSpeed === 'fast' ? 70 : dealSpeed === 'relaxed' ? 240 : 120;
     const workingHands: BlackjackHandState[] = initialHands.map((h) => ({
       ...h,
       cards: [...h.cards],
@@ -629,51 +714,88 @@ export default function BlackjackPage() {
     for (let i = 0; i < workingHands.length; i++) {
       setIsDealingAnimation(true);
       const c = currentShoe.cards.pop()!;
-      workingHands[i].cards.push(c);
       currentShoe.runningCount += getHiLoValue(c);
       currentShoe.dealtCount += 1;
-      setHands(workingHands.map((h) => ({ ...h, cards: [...h.cards] })));
       setShoe({ ...currentShoe, cards: [...currentShoe.cards] });
-      sound.playCardDeal();
-      await new Promise((r) => setTimeout(r, dealDelay));
+
+      const targetCoord = SEAT_ARC_COORDS[workingHands[i].spotIndex];
+      await dealSingleCard({
+        card: c,
+        faceDown: false,
+        origin: SHOE_COORD,
+        target: { x: targetCoord.x, y: targetCoord.y - (workingHands[i].isBot ? 8 : 12) },
+        durationMs: flightDuration,
+        onLanded: () => {
+          workingHands[i].cards.push(c);
+          setHands(workingHands.map((h) => ({ ...h, cards: [...h.cards] })));
+        },
+      });
+      await new Promise((r) => setTimeout(r, stepPause));
       setIsDealingAnimation(false);
     }
 
-    // Deal 1st card to dealer (Upcard)
+    // Deal 1st card to dealer (Upcard, face-up)
     setIsDealingAnimation(true);
     const dealerUpcard = currentShoe.cards.pop()!;
-    workingDealerCards.push(dealerUpcard);
     currentShoe.runningCount += getHiLoValue(dealerUpcard);
     currentShoe.dealtCount += 1;
-    setDealerCards([...workingDealerCards]);
     setShoe({ ...currentShoe, cards: [...currentShoe.cards] });
-    sound.playCardDeal();
-    await new Promise((r) => setTimeout(r, dealDelay));
+
+    await dealSingleCard({
+      card: dealerUpcard,
+      faceDown: false,
+      origin: SHOE_COORD,
+      target: { x: DEALER_COORD.x - 4, y: DEALER_COORD.y },
+      durationMs: flightDuration,
+      onLanded: () => {
+        workingDealerCards.push(dealerUpcard);
+        setDealerCards([...workingDealerCards]);
+      },
+    });
+    await new Promise((r) => setTimeout(r, stepPause));
     setIsDealingAnimation(false);
 
     // Pass 2: Deal 2nd card to players clockwise
     for (let i = 0; i < workingHands.length; i++) {
       setIsDealingAnimation(true);
       const c = currentShoe.cards.pop()!;
-      workingHands[i].cards.push(c);
       currentShoe.runningCount += getHiLoValue(c);
       currentShoe.dealtCount += 1;
-      setHands(workingHands.map((h) => ({ ...h, cards: [...h.cards] })));
       setShoe({ ...currentShoe, cards: [...currentShoe.cards] });
-      sound.playCardDeal();
-      await new Promise((r) => setTimeout(r, dealDelay));
+
+      const targetCoord = SEAT_ARC_COORDS[workingHands[i].spotIndex];
+      await dealSingleCard({
+        card: c,
+        faceDown: false,
+        origin: SHOE_COORD,
+        target: { x: targetCoord.x + 3, y: targetCoord.y - (workingHands[i].isBot ? 8 : 12) },
+        durationMs: flightDuration,
+        onLanded: () => {
+          workingHands[i].cards.push(c);
+          setHands(workingHands.map((h) => ({ ...h, cards: [...h.cards] })));
+        },
+      });
+      await new Promise((r) => setTimeout(r, stepPause));
       setIsDealingAnimation(false);
     }
 
-    // Deal 2nd card to dealer (Hole card, hidden)
+    // Deal 2nd card to dealer (Hole card, hidden/face-down)
     setIsDealingAnimation(true);
     const dealerHoleCard = currentShoe.cards.pop()!;
-    workingDealerCards.push(dealerHoleCard);
     currentShoe.dealtCount += 1;
-    setDealerCards([...workingDealerCards]);
     setShoe({ ...currentShoe, cards: [...currentShoe.cards] });
-    sound.playCardDeal();
-    await new Promise((r) => setTimeout(r, dealDelay));
+
+    await dealSingleCard({
+      card: dealerHoleCard,
+      faceDown: true,
+      origin: SHOE_COORD,
+      target: { x: DEALER_COORD.x + 4, y: DEALER_COORD.y },
+      durationMs: flightDuration,
+      onLanded: () => {
+        workingDealerCards.push(dealerHoleCard);
+        setDealerCards([...workingDealerCards]);
+      },
+    });
     setIsDealingAnimation(false);
 
     // Check Natural Blackjacks on player hands
@@ -721,55 +843,73 @@ export default function BlackjackPage() {
         currentShoe.runningCount += getHiLoValue(nextCard);
         currentShoe.dealtCount += 1;
         setShoe(currentShoe);
-        sound.playCardDeal();
 
-        const updatedHands = [...hands];
-        const newHand = { ...activeHand, cards: [...activeHand.cards, nextCard] };
-        const evaluation = calculateHand(newHand.cards);
+        const targetCoord = SEAT_ARC_COORDS[activeHand.spotIndex];
+        dealSingleCard({
+          card: nextCard,
+          faceDown: false,
+          origin: SHOE_COORD,
+          target: { x: targetCoord.x + (activeHand.cards.length * 3), y: targetCoord.y - 8 },
+          durationMs: dealSpeed === 'fast' ? 180 : dealSpeed === 'relaxed' ? 380 : 260,
+          onLanded: () => {
+            const updatedHands = [...hands];
+            const newHand = { ...activeHand, cards: [...activeHand.cards, nextCard] };
+            const evaluation = calculateHand(newHand.cards);
 
-        addLog('action', `${botName} Hits -> [${nextCard.rank}${nextCard.suit}] (Total: ${evaluation.total})`);
+            addLog('action', `${botName} Hits -> [${nextCard.rank}${nextCard.suit}] (Total: ${evaluation.total})`);
 
-        if (evaluation.isBusted) {
-          newHand.status = 'busted';
-          addLog('alert', `${botName} BUSTS with ${evaluation.total}!`);
-          updatedHands[activeHandIndex] = newHand;
-          setHands(updatedHands);
-          advanceToNextHand(activeHandIndex, updatedHands, currentShoe, dealerCards);
-        } else if (evaluation.is21) {
-          newHand.status = 'stood';
-          updatedHands[activeHandIndex] = newHand;
-          setHands(updatedHands);
-          advanceToNextHand(activeHandIndex, updatedHands, currentShoe, dealerCards);
-        } else {
-          updatedHands[activeHandIndex] = newHand;
-          setHands(updatedHands);
-          // Bot will trigger another hit/stand cycle via useEffect!
-        }
+            if (evaluation.isBusted) {
+              newHand.status = 'busted';
+              addLog('alert', `${botName} BUSTS with ${evaluation.total}!`);
+              updatedHands[activeHandIndex] = newHand;
+              setHands(updatedHands);
+              advanceToNextHand(activeHandIndex, updatedHands, currentShoe, dealerCards);
+            } else if (evaluation.is21) {
+              newHand.status = 'stood';
+              updatedHands[activeHandIndex] = newHand;
+              setHands(updatedHands);
+              advanceToNextHand(activeHandIndex, updatedHands, currentShoe, dealerCards);
+            } else {
+              updatedHands[activeHandIndex] = newHand;
+              setHands(updatedHands);
+            }
+          },
+        });
       } else if (action === 'double') {
         const nextCard = currentShoe.cards.pop()!;
         currentShoe.runningCount += getHiLoValue(nextCard);
         currentShoe.dealtCount += 1;
         setShoe(currentShoe);
-        sound.playCardDeal();
 
-        const updatedHands = [...hands];
-        const newHand = {
-          ...activeHand,
-          bet: activeHand.bet * 2,
-          isDoubled: true,
-          cards: [...activeHand.cards, nextCard],
-        };
-        const evaluation = calculateHand(newHand.cards);
-        newHand.status = evaluation.isBusted ? 'busted' : 'stood';
+        const targetCoord = SEAT_ARC_COORDS[activeHand.spotIndex];
+        dealSingleCard({
+          card: nextCard,
+          faceDown: false,
+          origin: SHOE_COORD,
+          target: { x: targetCoord.x + 8, y: targetCoord.y - 8 },
+          rotation: 90,
+          durationMs: dealSpeed === 'fast' ? 180 : dealSpeed === 'relaxed' ? 380 : 260,
+          onLanded: () => {
+            const updatedHands = [...hands];
+            const newHand = {
+              ...activeHand,
+              bet: activeHand.bet * 2,
+              isDoubled: true,
+              cards: [...activeHand.cards, nextCard],
+            };
+            const evaluation = calculateHand(newHand.cards);
+            newHand.status = evaluation.isBusted ? 'busted' : 'stood';
 
-        addLog('action', `${botName} Doubles Down -> [${nextCard.rank}${nextCard.suit}] (Total: ${evaluation.total})`);
-        if (evaluation.isBusted) {
-          addLog('alert', `${botName} BUSTS on Double Down!`);
-        }
+            addLog('action', `${botName} Doubles Down -> [${nextCard.rank}${nextCard.suit}] (Total: ${evaluation.total})`);
+            if (evaluation.isBusted) {
+              addLog('alert', `${botName} BUSTS on Double Down!`);
+            }
 
-        updatedHands[activeHandIndex] = newHand;
-        setHands(updatedHands);
-        advanceToNextHand(activeHandIndex, updatedHands, currentShoe, dealerCards);
+            updatedHands[activeHandIndex] = newHand;
+            setHands(updatedHands);
+            advanceToNextHand(activeHandIndex, updatedHands, currentShoe, dealerCards);
+          },
+        });
       } else {
         // Stand
         sound.playCheckKnock();
@@ -784,12 +924,12 @@ export default function BlackjackPage() {
     }, 600);
 
     return () => clearTimeout(timer);
-  }, [gamePhase, activeHand, activeHandIndex, dealerCards, hands, shoe, addLog, advanceToNextHand]);
+  }, [gamePhase, activeHand, activeHandIndex, dealerCards, hands, shoe, addLog, advanceToNextHand, dealSingleCard, dealSpeed]);
 
   // ============================================================================
   // HERO PLAYER ACTIONS
   // ============================================================================
-  const handleHit = () => {
+  const handleHit = async () => {
     if (gamePhase !== 'player_turn' || !activeHand || activeHand.isBot) return;
 
     const currentShoe = { ...shoe, cards: [...shoe.cards] };
@@ -798,28 +938,36 @@ export default function BlackjackPage() {
     currentShoe.dealtCount += 1;
     setShoe(currentShoe);
 
-    sound.playCardDeal();
+    const targetCoord = SEAT_ARC_COORDS[activeHand.spotIndex];
+    await dealSingleCard({
+      card: nextCard,
+      faceDown: false,
+      origin: SHOE_COORD,
+      target: { x: targetCoord.x + (activeHand.cards.length * 3), y: targetCoord.y - 12 },
+      durationMs: dealSpeed === 'fast' ? 180 : dealSpeed === 'relaxed' ? 380 : 260,
+      onLanded: () => {
+        const updatedHands = [...hands];
+        const hand = { ...activeHand, cards: [...activeHand.cards, nextCard] };
+        const evaluation = calculateHand(hand.cards);
 
-    const updatedHands = [...hands];
-    const hand = { ...activeHand, cards: [...activeHand.cards, nextCard] };
-    const evaluation = calculateHand(hand.cards);
+        addLog('action', `You (Spot ${activeHand.spotIndex + 1}) Hit -> [${nextCard.rank}${nextCard.suit}] (Total: ${evaluation.total})`);
 
-    addLog('action', `You (Spot ${activeHand.spotIndex + 1}) Hit -> [${nextCard.rank}${nextCard.suit}] (Total: ${evaluation.total})`);
+        if (evaluation.isBusted) {
+          hand.status = 'busted';
+          sound.playBetByDensity(25, 100);
+          addLog('alert', `You BUST with ${evaluation.total} at Spot ${activeHand.spotIndex + 1}!`);
+        } else if (evaluation.is21) {
+          hand.status = 'stood';
+        }
 
-    if (evaluation.isBusted) {
-      hand.status = 'busted';
-      sound.playBetByDensity(25, 100);
-      addLog('alert', `You BUST with ${evaluation.total} at Spot ${activeHand.spotIndex + 1}!`);
-    } else if (evaluation.is21) {
-      hand.status = 'stood';
-    }
+        updatedHands[activeHandIndex] = hand;
+        setHands(updatedHands);
 
-    updatedHands[activeHandIndex] = hand;
-    setHands(updatedHands);
-
-    if (hand.status === 'busted' || hand.status === 'stood') {
-      advanceToNextHand(activeHandIndex, updatedHands, currentShoe, dealerCards);
-    }
+        if (hand.status === 'busted' || hand.status === 'stood') {
+          advanceToNextHand(activeHandIndex, updatedHands, currentShoe, dealerCards);
+        }
+      },
+    });
   };
 
   const handleStand = () => {
@@ -836,7 +984,7 @@ export default function BlackjackPage() {
     advanceToNextHand(activeHandIndex, updatedHands, shoe, dealerCards);
   };
 
-  const handleDoubleDown = () => {
+  const handleDoubleDown = async () => {
     if (gamePhase !== 'player_turn' || !activeHand || activeHand.isBot) return;
     if (bankroll < activeHand.bet) {
       setTableNotice('Insufficient career vault balance to double down.');
@@ -852,31 +1000,40 @@ export default function BlackjackPage() {
     currentShoe.dealtCount += 1;
     setShoe(currentShoe);
 
-    sound.playCardDeal();
+    const targetCoord = SEAT_ARC_COORDS[activeHand.spotIndex];
+    await dealSingleCard({
+      card,
+      faceDown: false,
+      origin: SHOE_COORD,
+      target: { x: targetCoord.x + 8, y: targetCoord.y - 12 },
+      rotation: 90,
+      durationMs: dealSpeed === 'fast' ? 180 : dealSpeed === 'relaxed' ? 380 : 260,
+      onLanded: () => {
+        const updatedHands = [...hands];
+        const hand = {
+          ...activeHand,
+          bet: activeHand.bet * 2,
+          isDoubled: true,
+          cards: [...activeHand.cards, card],
+        };
 
-    const updatedHands = [...hands];
-    const hand = {
-      ...activeHand,
-      bet: activeHand.bet * 2,
-      isDoubled: true,
-      cards: [...activeHand.cards, card],
-    };
+        const evaluation = calculateHand(hand.cards);
+        hand.status = evaluation.isBusted ? 'busted' : 'stood';
 
-    const evaluation = calculateHand(hand.cards);
-    hand.status = evaluation.isBusted ? 'busted' : 'stood';
+        addLog('action', `You (Spot ${activeHand.spotIndex + 1}) Double Down -> [${card.rank}${card.suit}] (Total: ${evaluation.total}).`);
+        if (evaluation.isBusted) {
+          addLog('alert', `You BUST on Double Down at Spot ${activeHand.spotIndex + 1}!`);
+        }
 
-    addLog('action', `You (Spot ${activeHand.spotIndex + 1}) Double Down -> [${card.rank}${card.suit}] (Total: ${evaluation.total}).`);
-    if (evaluation.isBusted) {
-      addLog('alert', `You BUST on Double Down at Spot ${activeHand.spotIndex + 1}!`);
-    }
+        updatedHands[activeHandIndex] = hand;
+        setHands(updatedHands);
 
-    updatedHands[activeHandIndex] = hand;
-    setHands(updatedHands);
-
-    advanceToNextHand(activeHandIndex, updatedHands, currentShoe, dealerCards);
+        advanceToNextHand(activeHandIndex, updatedHands, currentShoe, dealerCards);
+      },
+    });
   };
 
-  const handleSplit = () => {
+  const handleSplit = async () => {
     if (gamePhase !== 'player_turn' || !activeHand || activeHand.isBot) return;
     if (activeHand.cards.length !== 2 || activeHand.cards[0].rank !== activeHand.cards[1].rank) return;
     if (bankroll < activeHand.bet) {
@@ -894,9 +1051,23 @@ export default function BlackjackPage() {
     currentShoe.dealtCount += 2;
     setShoe(currentShoe);
 
-    sound.playCardDeal();
-
     addLog('action', `You Split pair of ${activeHand.cards[0].rank}s into two hands at Spot ${activeHand.spotIndex + 1}.`);
+
+    const targetCoord = SEAT_ARC_COORDS[activeHand.spotIndex];
+    await dealSingleCard({
+      card: card1,
+      faceDown: false,
+      origin: SHOE_COORD,
+      target: { x: targetCoord.x - 3, y: targetCoord.y - 12 },
+      durationMs: dealSpeed === 'fast' ? 180 : dealSpeed === 'relaxed' ? 380 : 260,
+    });
+    await dealSingleCard({
+      card: card2,
+      faceDown: false,
+      origin: SHOE_COORD,
+      target: { x: targetCoord.x + 4, y: targetCoord.y - 12 },
+      durationMs: dealSpeed === 'fast' ? 180 : dealSpeed === 'relaxed' ? 380 : 260,
+    });
 
     const handA: BlackjackHandState = {
       ...activeHand,
@@ -955,150 +1126,217 @@ export default function BlackjackPage() {
     }, 500);
   };
 
+  // Session Persistence Handlers
+  const handleStartNewTable = useCallback(
+    (customConfig?: BlackjackTableConfig) => {
+      const cfg = customConfig ?? tableConfig;
+      setTableConfig(cfg);
+      const newSessionId = `bj-${Date.now()}`;
+      setActiveSessionId(newSessionId);
+      setRoundsPlayed(0);
+
+      setShoe(createShoe(cfg.deckCount, Math.floor(Math.random() * 10000)));
+
+      if (cfg.trainingMode === 'counting') {
+        setShowCountingHud(true);
+      }
+
+      const heroSpots: number[] =
+        cfg.spotCount === 1 ? [2]
+        : cfg.spotCount === 2 ? [1, 2]
+        : cfg.spotCount === 3 ? [1, 2, 3]
+        : cfg.spotCount === 4 ? [0, 1, 2, 3]
+        : [0, 1, 2, 3, 4];
+
+      const defaultBet = cfg.minBet;
+      const botPresets = Object.values(BLACKJACK_BOT_PRESETS);
+
+      const newSeats: TableSeat[] = [0, 1, 2, 3, 4].map((spotIndex) => {
+        if (heroSpots.includes(spotIndex)) {
+          return { spotIndex, occupant: 'hero', bet: defaultBet };
+        }
+        if (cfg.autoFillBots) {
+          const preset = botPresets.shift() || Object.values(BLACKJACK_BOT_PRESETS)[0];
+          return {
+            spotIndex,
+            occupant: 'bot',
+            bet: defaultBet,
+            bot: preset,
+          };
+        }
+        return { spotIndex, occupant: 'empty', bet: 0 };
+      });
+
+      setSeats(newSeats);
+      setSelectedChip(defaultBet);
+      setHands([]);
+      setDealerCards([]);
+      setGamePhase('betting');
+      setViewMode('GAME');
+    },
+    [tableConfig]
+  );
+
+  const handleResumeSession = useCallback((session: BlackjackSession) => {
+    setActiveSessionId(session.id);
+    setTableConfig(session.config);
+    setBankroll(session.bankroll);
+    setRoundsPlayed(session.handsPlayed);
+    setShoe(createShoe(session.config.deckCount, Math.floor(Math.random() * 10000)));
+
+    if (session.config.trainingMode === 'counting') {
+      setShowCountingHud(true);
+    }
+
+    const defaultBet = session.config.minBet;
+    const heroSpots: number[] =
+      session.config.spotCount === 1 ? [2]
+      : session.config.spotCount === 2 ? [1, 2]
+      : session.config.spotCount === 3 ? [1, 2, 3]
+      : session.config.spotCount === 4 ? [0, 1, 2, 3]
+      : [0, 1, 2, 3, 4];
+
+    const botPresets = Object.values(BLACKJACK_BOT_PRESETS);
+    const newSeats: TableSeat[] = [0, 1, 2, 3, 4].map((spotIndex) => {
+      if (heroSpots.includes(spotIndex)) {
+        return { spotIndex, occupant: 'hero', bet: defaultBet };
+      }
+      if (session.config.autoFillBots) {
+        const preset = botPresets.shift() || Object.values(BLACKJACK_BOT_PRESETS)[0];
+        return {
+          spotIndex,
+          occupant: 'bot',
+          bet: defaultBet,
+          bot: preset,
+        };
+      }
+      return { spotIndex, occupant: 'empty', bet: 0 };
+    });
+
+    setSeats(newSeats);
+    setSelectedChip(defaultBet);
+    setHands([]);
+    setDealerCards([]);
+    setGamePhase('betting');
+    setViewMode('GAME');
+  }, []);
+
+  const handleDeleteSession = useCallback((sessionId: string) => {
+    const updated = deleteSession<BlackjackSession>('blackjack', sessionId);
+    setSavedSessions(updated);
+  }, []);
+
   // Global Auth Guard (after all hooks)
   if (!userProfile || userProfile.isGuest || userProfile.emailVerified === false) {
     return <AuthGateView />;
   }
 
+  if (viewMode === 'LOBBY') {
+    return (
+      <>
+        <UserProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
+        <BlackjackLobbyView
+          savedSessions={savedSessions}
+          currentConfig={tableConfig}
+          onConfigChange={(cfg) => setTableConfig((prev) => ({ ...prev, ...cfg }))}
+          onStartNewTable={handleStartNewTable}
+          onResumeSession={handleResumeSession}
+          onDeleteSession={handleDeleteSession}
+          userProfile={userProfile}
+          onOpenProfile={() => setIsProfileOpen(true)}
+        />
+      </>
+    );
+  }
+
   return (
-    <div
-      className={clsx(
-        'min-h-screen w-full bg-[#05080c] text-white flex flex-col font-sans select-none overflow-x-hidden transition-all duration-300',
-        hasLeftDock && 'lg:pl-80 sm:lg:pl-88',
-        hasRightDock && 'lg:pr-80 sm:lg:pr-88'
-      )}
-    >
+    <div className="min-h-screen w-full bg-[#05080c] text-white flex flex-col font-sans select-none overflow-x-hidden">
       {/* Profile Modal */}
       <UserProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
 
-      {/* Top Header */}
-      <header className="border-b border-white/10 bg-[#0a0e14]/90 backdrop-blur-md px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between sticky top-0 z-40">
-        <div className="flex items-center gap-2.5 sm:gap-3">
-          <Link
-            href="/"
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white text-xs font-semibold transition cursor-pointer"
-            title="Return to Casino Floor"
-          >
-            <ArrowLeft size={13} />
-            <span className="hidden sm:inline">Casino Floor</span>
-          </Link>
-
+      {/* Standardized Casino Top Navigation Bar */}
+      <TableTopBar
+        mode="game"
+        title="Blackjack Lounge"
+        subtitle={`${tableConfig.stakesTier.toUpperCase()} • ${tableConfig.deckCount}-Deck • ${tableConfig.spotCount} Spots`}
+        icon={
           <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center text-black font-black text-sm italic shadow-md">
             21
           </div>
-
-          <div>
-            <h1 className="text-xs sm:text-base font-black tracking-wide uppercase leading-none">
-              VIP 5-Seat Blackjack Salon
-            </h1>
-            <span className="text-amber-400/90 text-[9px] sm:text-[10px] tracking-widest font-bold uppercase">
-              Vegas Strip S17 &bull; 6-Deck Shoe &bull; 3:2 Payout
-            </span>
+        }
+        floorHref="/"
+        onExitToLobby={() => setViewMode('LOBBY')}
+        lobbyLabel="Lobby"
+        centerStatus={
+          <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 px-3 py-1 rounded-full text-zinc-300 text-xs shadow-sm">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="font-semibold text-white">S17 Natural 3:2</span>
           </div>
-        </div>
-
-        {/* Header Right Controls */}
-        <div className="flex items-center gap-1.5 sm:gap-2.5">
-          {/* AI Strategy Coach Dock Toggle */}
-          <button
-            onClick={() => setCoachPosition((pos) => (pos === 'hidden' ? 'left' : 'hidden'))}
-            className={clsx(
-              'px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 border transition cursor-pointer',
-              coachPosition !== 'hidden'
-                ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 shadow-amber-500/20 shadow-sm'
-                : 'bg-zinc-800/80 border-zinc-700 text-zinc-400'
-            )}
-            title="Toggle AI Basic Strategy Coach"
-          >
-            <Sparkles size={13} />
-            <span className="hidden sm:inline">AI Coach</span>
-          </button>
-
-          {/* Dealer Speech Log Dock Toggle */}
-          <button
-            onClick={() => setDealerLogPosition((pos) => (pos === 'hidden' ? 'right' : 'hidden'))}
-            className={clsx(
-              'px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 border transition cursor-pointer',
-              dealerLogPosition !== 'hidden'
-                ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-300 shadow-indigo-500/20 shadow-sm'
-                : 'bg-zinc-800/80 border-zinc-700 text-zinc-400'
-            )}
-            title="Toggle Live Dealer Log"
-          >
-            <MessageSquare size={13} />
-            <span className="hidden sm:inline">Dealer Log</span>
-            <span className="text-[9px] bg-zinc-800 px-1 py-0.2 rounded font-mono">
-              {logs.length}
-            </span>
-          </button>
-
-          {/* Hi-Lo Counting HUD Toggle */}
+        }
+        bankroll={bankroll}
+        userProfile={userProfile}
+        onProfileClick={() => setIsProfileOpen(true)}
+        soundMuted={soundMuted}
+        onToggleMute={toggleMute}
+        speed={dealSpeed}
+        onSpeedChange={setDealSpeed}
+        coachPosition={coachPosition}
+        onCoachPositionChange={setCoachPosition}
+        logPosition={dealerLogPosition}
+        onLogPositionChange={setDealerLogPosition}
+        customSettingsTitle="Blackjack Counting HUD"
+        customSettings={
           <button
             onClick={() => setShowCountingHud((v) => !v)}
             className={clsx(
-              'px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 border transition cursor-pointer',
+              'w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer',
               showCountingHud
                 ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
                 : 'bg-zinc-800/80 border-zinc-700 text-zinc-400'
             )}
             title="Toggle Hi-Lo Card Counting Telemetry"
           >
-            <Flame size={13} />
-            <span className="hidden sm:inline">Counter HUD</span>
-          </button>
-
-          {/* Deal Pacing Toggle */}
-          <button
-            onClick={() => setDealSpeed((s) => (s === 'relaxed' ? 'normal' : 'relaxed'))}
-            className={clsx(
-              'px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 border transition cursor-pointer',
-              dealSpeed === 'relaxed'
-                ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
-                : 'bg-zinc-800/80 border-zinc-700 text-zinc-400'
-            )}
-            title="Toggle Deal Pacing (Relaxed vs Normal)"
-          >
-            <span>⏱️</span>
-            <span className="hidden sm:inline">Speed:</span>
-            <span className="capitalize">{dealSpeed}</span>
-          </button>
-
-          {/* Live Career Vault Pill */}
-          <div className="flex items-center gap-1.5 bg-zinc-900 border border-amber-500/30 px-2.5 sm:px-3 py-1 rounded-full">
-            <Coins size={13} className="text-amber-400" />
-            <span className="font-mono font-bold text-xs text-emerald-300">
-              ${bankroll.toLocaleString()}
+            <span className="flex items-center gap-1.5">
+              <Flame size={13} className={showCountingHud ? 'text-amber-400' : 'text-zinc-500'} />
+              <span>Hi-Lo Counter HUD</span>
             </span>
-          </div>
-
-          {/* Audio */}
-          <button
-            onClick={toggleMute}
-            className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-300 transition cursor-pointer"
-            title={soundMuted ? 'Unmute' : 'Mute'}
-          >
-            {soundMuted ? <VolumeX size={14} className="text-rose-400" /> : <Volume2 size={14} className="text-emerald-400" />}
+            <span className="text-[10px] text-zinc-400 font-mono">
+              {showCountingHud ? 'Active' : 'Off'}
+            </span>
           </button>
+        }
+      />
 
-          {/* Profile Trigger */}
-          <button
-            onClick={() => setIsProfileOpen(true)}
-            className="flex items-center gap-1.5 p-1 rounded-full bg-zinc-900 border border-white/15 transition cursor-pointer"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={userProfile.avatarUrl}
-              alt={userProfile.nickname}
-              className="w-5 h-5 rounded-full object-cover border border-amber-400"
-            />
-          </button>
-        </div>
-      </header>
-
-      {/* Main VIP Blackjack Table Stage */}
-      <main className="flex-1 flex flex-col items-center justify-between p-2 sm:p-4 md:p-6 max-w-6xl w-full mx-auto relative">
+      {/* Main VIP Blackjack Table Stage (Auto-Reorganizes based on Left/Right Docked Panels) */}
+      <main
+        className={clsx(
+          'flex-1 flex flex-col items-center justify-between p-2 sm:p-4 md:p-6 max-w-6xl w-full mx-auto relative transition-all duration-300',
+          hasLeftDock && 'lg:pl-80 xl:pl-88',
+          hasRightDock && 'lg:pr-80 xl:pr-88'
+        )}
+      >
         {/* Table Felt Container (Aspect ratio modeled after authentic VIP tables) */}
-        <div className="w-full relative aspect-[16/10] sm:aspect-[16/9] max-h-[72vh] rounded-[120px_120px_60px_60px] border-[12px] sm:border-[16px] border-[#1e130c] bg-[radial-gradient(ellipse_at_50%_15%,#0d542b_0%,#073a1c_55%,#021f0e_100%)] shadow-[inset_0_0_80px_rgba(0,0,0,0.9),0_25px_60px_rgba(0,0,0,0.95)] flex flex-col justify-between p-4 sm:p-6 overflow-hidden">
+        <div 
+          onClick={() => {
+            if (isPhysicalDealing) fastForward();
+          }}
+          className="w-full relative aspect-[16/10] sm:aspect-[16/9] max-h-[72vh] rounded-[120px_120px_60px_60px] border-[12px] sm:border-[16px] border-[#1e130c] bg-[radial-gradient(ellipse_at_50%_15%,#0d542b_0%,#073a1c_55%,#021f0e_100%)] shadow-[inset_0_0_80px_rgba(0,0,0,0.9),0_25px_60px_rgba(0,0,0,0.95)] flex flex-col justify-between p-4 sm:p-6 overflow-hidden select-none"
+        >
+          {/* Shared Physical Card Dealing Flight Overlay */}
+          <CardDealingOverlay flyingCards={flyingCards} onCardLanded={onCardLanded} />
+
+          {/* Dealing Fast-Forward Helper Pill */}
+          {isPhysicalDealing && (
+            <div 
+              className="absolute top-3 left-1/2 -translate-x-1/2 z-50 bg-black/85 border border-amber-500/50 text-amber-300 text-[9px] font-bold px-3 py-1 rounded-full shadow-2xl backdrop-blur-md animate-pulse flex items-center gap-1.5 cursor-pointer pointer-events-auto"
+              onClick={(e) => { e.stopPropagation(); fastForward(); }}
+            >
+              <span>Deal in progress</span>
+              <span className="text-zinc-400">&bull;</span>
+              <span className="text-white">Click felt or [Space] to skip</span>
+            </div>
+          )}
+
           {/* Subtle Outer Leather Bumper Highlight */}
           <div className="absolute inset-0 rounded-[105px_105px_45px_45px] border-2 border-[#3d2719]/40 pointer-events-none" />
 
@@ -1171,7 +1409,7 @@ export default function BlackjackPage() {
             <div className="w-20 sm:w-28 flex justify-end">
               <DealingShoe
                 remainingCards={shoe.cards.length}
-                isDealing={isDealingAnimation}
+                isDealing={isDealingAnimation || isPhysicalDealing}
               />
             </div>
           </div>

@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import Link from 'next/link';
 import { usePokerStore } from '@/lib/store';
 import { AuthGateView } from '@/components/poker/AuthGateView';
 import { UserProfileModal } from '@/components/poker/UserProfileModal';
@@ -32,11 +31,11 @@ import {
 } from '@/components/roulette/RouletteDealerLog';
 import { RouletteAICoach } from '@/components/roulette/RouletteAICoach';
 import { LogPosition } from '@/components/blackjack/BlackjackDealerLog';
+import { TableTopBar } from '@/components/casino';
+import { RouletteLobbyView } from '@/components/roulette/RouletteLobbyView';
+import { getSavedSessions, saveSession, deleteSession } from '@/lib/sessions/sessionManager';
+import { RouletteSession, RouletteTableConfig } from '@/lib/sessions/types';
 import {
-  ArrowLeft,
-  Volume2,
-  VolumeX,
-  Coins,
   Sparkles,
   BarChart3,
   RotateCcw,
@@ -44,9 +43,7 @@ import {
   Snowflake,
   HelpCircle,
   X,
-  MessageSquare,
   Clock,
-  Palette,
   ShieldCheck,
 } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -73,6 +70,22 @@ export default function RoulettePage() {
 
   // Persistent Career Bankroll
   const [bankroll, setBankroll] = useState<number>(userProfile?.careerBankroll ?? 2000);
+
+  // Lobby / Game View Mode & Session Persistence States
+  const [viewMode, setViewMode] = useState<'LOBBY' | 'GAME'>('LOBBY');
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [spinsPlayed, setSpinsPlayed] = useState<number>(0);
+  const [savedSessions, setSavedSessions] = useState<RouletteSession[]>(() =>
+    getSavedSessions<RouletteSession>('roulette')
+  );
+  const [currentConfig, setCurrentConfig] = useState<RouletteTableConfig>({
+    variant: 'european',
+    stakesTier: 'regular',
+    minBet: 5,
+    maxBet: 500,
+    betTimerSeconds: 15,
+    buyInAmount: 1000,
+  });
 
   // Chip selection
   const [selectedChip, setSelectedChip] = useState<number>(25);
@@ -501,13 +514,40 @@ export default function RoulettePage() {
         setLastSettlement(settlement);
 
         // Award total payout to player bankroll
+        const finalBankroll = settlement.totalPayout > 0 ? bankroll + settlement.totalPayout : bankroll;
         if (settlement.totalPayout > 0) {
-          updateVaultBankroll(bankroll + settlement.totalPayout);
+          updateVaultBankroll(finalBankroll);
           sound.playWinPot();
           addLog('payout', `Round Won! Payout: $${settlement.totalPayout.toLocaleString()} (Net profit +$${settlement.netProfit.toLocaleString()})`);
         } else if (activeBetsArray.length > 0) {
           addLog('payout', `No winning bets. Net loss -$${settlement.totalWagered.toLocaleString()}`);
         }
+
+        // Auto-save session
+        const nextSpins = spinsPlayed + 1;
+        setSpinsPlayed(nextSpins);
+
+        const sessionToSave: RouletteSession = {
+          id: activeSessionId || `rl-${Date.now()}`,
+          gameType: 'roulette',
+          createdAt: Date.now(),
+          lastPlayedAt: Date.now(),
+          handsPlayed: nextSpins,
+          tableBankroll: finalBankroll,
+          bankroll: finalBankroll,
+          totalWagered: settlement.totalWagered,
+          totalWon: settlement.totalPayout,
+          config: currentConfig,
+          recentNumbers: [
+            {
+              pocket: winningPocket.label,
+              color: winningPocket.color,
+              timestamp: Date.now(),
+            },
+          ],
+        };
+        const updated = saveSession<RouletteSession>('roulette', sessionToSave);
+        setSavedSessions(updated);
 
         // Clear active bets from table
         setBets({});
@@ -531,6 +571,9 @@ export default function RoulettePage() {
     updateVaultBankroll,
     addLog,
     timerDuration,
+    spinsPlayed,
+    activeSessionId,
+    currentConfig,
   ]);
 
   // Clean up animation frame on unmount
@@ -579,6 +622,41 @@ export default function RoulettePage() {
     return calculateRouletteStatistics(history, variant);
   }, [history, variant]);
 
+  // Session Persistence Handlers
+  const handleStartNewTable = useCallback(
+    (customConfig?: RouletteTableConfig) => {
+      const cfg = customConfig ?? currentConfig;
+      setCurrentConfig(cfg);
+      setVariant(cfg.variant);
+      const timerSec = cfg.betTimerSeconds ?? 0;
+      setTimerDuration(timerSec as 15 | 30 | 0);
+      setCountdown(cfg.betTimerSeconds ?? null);
+      setActiveSessionId(`rl-${Date.now()}`);
+      setSpinsPlayed(0);
+      setBets({});
+      setViewMode('GAME');
+    },
+    [currentConfig]
+  );
+
+  const handleResumeSession = useCallback((session: RouletteSession) => {
+    setActiveSessionId(session.id);
+    setCurrentConfig(session.config);
+    setVariant(session.config.variant);
+    const timerSec = session.config.betTimerSeconds ?? 0;
+    setTimerDuration(timerSec as 15 | 30 | 0);
+    setCountdown(session.config.betTimerSeconds ?? null);
+    setBankroll(session.bankroll);
+    setSpinsPlayed(session.handsPlayed);
+    setBets({});
+    setViewMode('GAME');
+  }, []);
+
+  const handleDeleteSession = useCallback((sessionId: string) => {
+    const updated = deleteSession<RouletteSession>('roulette', sessionId);
+    setSavedSessions(updated);
+  }, []);
+
   // If user is not authenticated, render standard AuthGateView
   if (!userProfile) {
     return (
@@ -588,191 +666,168 @@ export default function RoulettePage() {
     );
   }
 
+  if (viewMode === 'LOBBY') {
+    return (
+      <>
+        <UserProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
+        <RouletteLobbyView
+          savedSessions={savedSessions}
+          currentConfig={currentConfig}
+          onConfigChange={(cfg) => {
+            setCurrentConfig((prev) => {
+              const updated = { ...prev, ...cfg };
+              if (cfg.variant) setVariant(cfg.variant);
+              if (cfg.betTimerSeconds !== undefined) {
+                setTimerDuration((cfg.betTimerSeconds ?? 0) as 15 | 30 | 0);
+                setCountdown(cfg.betTimerSeconds ?? null);
+              }
+              return updated;
+            });
+          }}
+          onStartNewTable={handleStartNewTable}
+          onResumeSession={handleResumeSession}
+          onDeleteSession={handleDeleteSession}
+          userProfile={userProfile}
+          onOpenProfile={() => setIsProfileOpen(true)}
+        />
+      </>
+    );
+  }
+
   return (
     <div
       className={clsx(
-        'min-h-screen text-slate-100 flex flex-col select-none overflow-x-hidden font-sans transition-all duration-300',
-        feltTheme === 'burgundy' ? 'bg-[#180a0c]' : 'bg-[#06120b]',
-        hasLeftDock && 'lg:pl-80 sm:lg:pl-88',
-        hasRightDock && 'lg:pr-80 sm:lg:pr-88'
+        'min-h-screen text-slate-100 flex flex-col select-none overflow-x-hidden font-sans',
+        feltTheme === 'burgundy' ? 'bg-[#180a0c]' : 'bg-[#06120b]'
       )}
     >
-      {/* 1. Header Navigation Bar */}
-      <header className="h-14 border-b border-amber-900/40 bg-zinc-950/85 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between z-20 sticky top-0">
-        <div className="flex items-center space-x-3 sm:space-x-4">
-          <Link
-            href="/"
-            className="flex items-center space-x-1.5 text-xs sm:text-sm font-medium text-amber-400 hover:text-amber-300 transition-colors bg-amber-950/30 hover:bg-amber-900/40 px-2.5 py-1.5 rounded-lg border border-amber-800/40"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span className="hidden sm:inline">Casino Floor</span>
-          </Link>
-          <div className="h-4 w-px bg-zinc-800" />
-          <div className="flex items-center space-x-2">
-            <span className="text-sm sm:text-base font-black tracking-wider text-amber-300 drop-shadow-[0_0_12px_rgba(245,158,11,0.35)]">
-              MONTE CARLO ROULETTE
-            </span>
-            <span className="text-[10px] font-semibold tracking-wider uppercase px-2 py-0.5 rounded-full bg-amber-950/70 border border-amber-700/50 text-amber-400">
-              {variant === 'european' ? 'Single 0 • 2.7%' : '0 & 00 • 5.3%'}
-            </span>
+      {/* Standardized Casino Top Navigation Bar */}
+      <TableTopBar
+        mode="game"
+        title="Monte Carlo Roulette"
+        subtitle={variant === 'european' ? 'European Single 0 • 2.7%' : 'American 0 & 00 • 5.3%'}
+        icon={
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-600 to-amber-800 flex items-center justify-center text-white font-black text-sm shadow-md">
+            🎡
           </div>
-        </div>
+        }
+        floorHref="/"
+        onExitToLobby={() => setViewMode('LOBBY')}
+        lobbyLabel="Lobby"
+        centerStatus={
+          countdown !== null && !isSpinning ? (
+            <div className="flex items-center gap-2 bg-zinc-900 border border-amber-500/40 px-3 py-1 rounded-full text-xs shadow-sm">
+              <Clock size={12} className="text-amber-400 animate-spin" />
+              <span className="text-zinc-400 font-mono">Bets Close:</span>
+              <span className={clsx('font-black font-mono', countdown <= 5 ? 'text-rose-400 animate-pulse' : 'text-amber-300')}>
+                {countdown}s
+              </span>
+            </div>
+          ) : isSpinning ? (
+            <div className="flex items-center gap-2 bg-amber-950/60 border border-amber-500/50 px-3 py-1 rounded-full text-xs shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+              <span className="font-black text-amber-300 tracking-wider">RIEN NE VA PLUS</span>
+            </div>
+          ) : undefined
+        }
+        bankroll={bankroll}
+        userProfile={userProfile}
+        onProfileClick={() => setIsProfileOpen(true)}
+        soundMuted={soundMuted}
+        onToggleMute={toggleMute}
+        onOpenRules={() => setIsRulesOpen(true)}
+        rulesTitle="Roulette Rules & Payouts"
+        onOpenStats={() => setIsStatsOpen(true)}
+        statsTitle="Roulette Statistics & Heatmap"
+        themes={[
+          {
+            id: 'burgundy',
+            label: 'Monte Carlo Burgundy',
+            active: feltTheme === 'burgundy',
+            onClick: () => setFeltTheme('burgundy'),
+          },
+          {
+            id: 'green',
+            label: 'Emerald Green',
+            active: feltTheme === 'green',
+            onClick: () => setFeltTheme('green'),
+          },
+        ]}
+        coachPosition={coachPosition}
+        onCoachPositionChange={setCoachPosition}
+        logPosition={dealerLogPosition}
+        onLogPositionChange={setDealerLogPosition}
+        logLabel="Croupier Log"
+        customSettingsTitle="Wheel & Betting Timer"
+        customSettings={
+          <div className="space-y-2">
+            <div>
+              <div className="text-[10px] text-zinc-400 font-semibold mb-1">Wheel Variant:</div>
+              <div className="grid grid-cols-2 gap-1 bg-zinc-950/80 p-0.5 rounded-lg border border-zinc-800">
+                <button
+                  onClick={() => {
+                    if (isSpinning) return;
+                    setVariant('european');
+                    addLog('system', 'Switched wheel to European Single Zero (2.70% house edge).');
+                  }}
+                  className={clsx(
+                    'py-1 rounded text-[11px] font-semibold transition text-center cursor-pointer',
+                    variant === 'european'
+                      ? 'bg-amber-500 text-black font-bold shadow-sm'
+                      : 'text-zinc-400 hover:text-white'
+                  )}
+                >
+                  European (0)
+                </button>
+                <button
+                  onClick={() => {
+                    if (isSpinning) return;
+                    setVariant('american');
+                    addLog('system', 'Switched wheel to American Double Zero (5.26% house edge).');
+                  }}
+                  className={clsx(
+                    'py-1 rounded text-[11px] font-semibold transition text-center cursor-pointer',
+                    variant === 'american'
+                      ? 'bg-amber-500 text-black font-bold shadow-sm'
+                      : 'text-zinc-400 hover:text-white'
+                  )}
+                >
+                  American (00)
+                </button>
+              </div>
+            </div>
 
-        {/* Center / Right controls: Timer selector, Variant, Felt Theme, Stats, Sound, Bankroll */}
-        <div className="flex items-center space-x-2 sm:space-x-3">
-          {/* Configurable Timer Selector */}
-          <div className="hidden sm:flex items-center bg-zinc-900/90 rounded-lg p-0.5 border border-zinc-800 text-xs">
-            <span className="px-2 text-zinc-400 text-[10px] font-semibold uppercase flex items-center gap-1">
-              <Clock size={11} className="text-amber-400" />
-              Timer:
-            </span>
-            <button
-              onClick={() => handleTimerChange(15)}
-              className={clsx(
-                'px-2 py-0.5 rounded font-medium text-[11px] transition',
-                timerDuration === 15 ? 'bg-amber-500 text-black font-bold shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
-              )}
-            >
-              15s
-            </button>
-            <button
-              onClick={() => handleTimerChange(30)}
-              className={clsx(
-                'px-2 py-0.5 rounded font-medium text-[11px] transition',
-                timerDuration === 30 ? 'bg-amber-500 text-black font-bold shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
-              )}
-            >
-              30s
-            </button>
-            <button
-              onClick={() => handleTimerChange(0)}
-              className={clsx(
-                'px-2 py-0.5 rounded font-medium text-[11px] transition',
-                timerDuration === 0 ? 'bg-amber-500 text-black font-bold shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
-              )}
-            >
-              Manual
-            </button>
+            <div>
+              <div className="text-[10px] text-zinc-400 font-semibold mb-1">Betting Countdown Timer:</div>
+              <div className="grid grid-cols-3 gap-1 bg-zinc-950/80 p-0.5 rounded-lg border border-zinc-800">
+                {([15, 30, 0] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => handleTimerChange(t)}
+                    className={clsx(
+                      'py-1 rounded text-[11px] font-semibold transition text-center cursor-pointer',
+                      timerDuration === t
+                        ? 'bg-amber-500 text-black font-bold shadow-sm'
+                        : 'text-zinc-400 hover:text-white'
+                    )}
+                  >
+                    {t === 0 ? 'Manual' : `${t}s`}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
+        }
+      />
 
-          {/* European / American Wheel Toggle */}
-          <div className="hidden md:flex items-center bg-zinc-900/90 rounded-lg p-0.5 border border-zinc-800 text-xs">
-            <button
-              onClick={() => {
-                if (isSpinning) return;
-                setVariant('european');
-                addLog('system', 'Switched wheel to European Single Zero (2.70% house edge).');
-              }}
-              className={clsx(
-                'px-2 py-0.5 rounded font-medium text-[11px] transition-all',
-                variant === 'european'
-                  ? 'bg-amber-500 text-black shadow-sm font-bold'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              )}
-            >
-              European
-            </button>
-            <button
-              onClick={() => {
-                if (isSpinning) return;
-                setVariant('american');
-                addLog('system', 'Switched wheel to American Double Zero (5.26% house edge).');
-              }}
-              className={clsx(
-                'px-2 py-0.5 rounded font-medium text-[11px] transition-all',
-                variant === 'american'
-                  ? 'bg-amber-500 text-black shadow-sm font-bold'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              )}
-            >
-              American
-            </button>
-          </div>
-
-          {/* Felt Color Theme Toggle: Burgundy vs Green */}
-          <button
-            onClick={() => setFeltTheme((t) => (t === 'burgundy' ? 'green' : 'burgundy'))}
-            className="p-1.5 rounded-lg bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-amber-300 transition-colors"
-            title={`Switch to ${feltTheme === 'burgundy' ? 'Emerald Green' : 'Monte Carlo Burgundy'} Felt`}
-          >
-            <Palette className="w-4 h-4" />
-          </button>
-
-          {/* AI Probability Coach Toggle */}
-          <button
-            onClick={() => setCoachPosition((pos) => (pos === 'hidden' ? 'left' : 'hidden'))}
-            className={clsx(
-              'px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 border transition cursor-pointer',
-              coachPosition !== 'hidden'
-                ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 shadow-amber-500/20 shadow-sm'
-                : 'bg-zinc-900/80 border-zinc-800 text-zinc-400'
-            )}
-            title="Toggle AI Odds & Probability Coach"
-          >
-            <Sparkles size={13} />
-            <span className="hidden sm:inline">AI Coach</span>
-          </button>
-
-          {/* Croupier Speech Log Toggle */}
-          <button
-            onClick={() => setDealerLogPosition((pos) => (pos === 'hidden' ? 'right' : 'hidden'))}
-            className={clsx(
-              'px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 border transition cursor-pointer',
-              dealerLogPosition !== 'hidden'
-                ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 shadow-amber-500/20 shadow-sm'
-                : 'bg-zinc-900/80 border-zinc-800 text-zinc-400'
-            )}
-            title="Toggle Croupier Speech Log"
-          >
-            <MessageSquare size={13} />
-            <span className="hidden sm:inline">Croupier Log</span>
-            <span className="text-[10px] bg-zinc-800 px-1 py-0.2 rounded font-mono">
-              {logs.length}
-            </span>
-          </button>
-
-          {/* Stats Button */}
-          <button
-            onClick={() => setIsStatsOpen(true)}
-            className="p-1.5 rounded-lg bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-amber-300 transition-colors"
-            title="Roulette Statistics & Heatmap"
-          >
-            <BarChart3 className="w-4 h-4" />
-          </button>
-
-          {/* Rules / Help Button */}
-          <button
-            onClick={() => setIsRulesOpen(true)}
-            className="p-1.5 rounded-lg bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-amber-300 transition-colors"
-            title="Roulette Rules & Payouts"
-          >
-            <HelpCircle className="w-4 h-4" />
-          </button>
-
-          {/* Mute Button */}
-          <button
-            onClick={toggleMute}
-            className="p-1.5 rounded-lg bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-amber-300 transition-colors"
-            title={soundMuted ? 'Unmute Sound' : 'Mute Sound'}
-          >
-            {soundMuted ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4 text-amber-400" />}
-          </button>
-
-          {/* Career Bankroll Vault Pill */}
-          <button
-            onClick={() => setIsProfileOpen(true)}
-            className="flex items-center space-x-1.5 bg-gradient-to-r from-amber-950/60 to-zinc-900 border border-amber-600/40 hover:border-amber-500/80 px-2.5 py-1 rounded-full transition-all group shadow-inner"
-          >
-            <Coins className="w-3.5 h-3.5 text-amber-400 group-hover:scale-110 transition-transform" />
-            <span className="text-xs font-bold text-amber-200">
-              ${bankroll.toLocaleString()}
-            </span>
-          </button>
-        </div>
-      </header>
-
-      {/* 2. Main Game Arena - Modeled Directly on Reference Photo */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-5 flex flex-col gap-4">
+      {/* 2. Main Game Arena (Auto-Reorganizes based on Left/Right Docked Panels) */}
+      <main
+        className={clsx(
+          'flex-1 max-w-7xl w-full mx-auto p-3 sm:p-5 flex flex-col gap-4 transition-all duration-300',
+          hasLeftDock && 'lg:pl-80 xl:pl-88',
+          hasRightDock && 'lg:pr-80 xl:pr-88'
+        )}
+      >
         {/* Top Marquee Strip: Recent Numbers & Live Betting Status */}
         <div className="flex items-center justify-between bg-zinc-950/70 border border-amber-900/30 rounded-xl px-3 py-2 text-xs">
           <div className="flex items-center space-x-3">
@@ -1572,7 +1627,7 @@ export default function RoulettePage() {
       {/* 3. Statistics & Hot/Cold Modal */}
       {isStatsOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-amber-900/40 rounded-2xl max-w-lg w-full p-5 shadow-2xl relative">
+          <div className="bg-zinc-900 border border-amber-900/40 rounded-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto custom-scrollbar p-5 shadow-2xl relative">
             <button
               onClick={() => setIsStatsOpen(false)}
               className="absolute top-4 right-4 p-1 rounded-lg text-zinc-400 hover:text-white"
@@ -1670,7 +1725,7 @@ export default function RoulettePage() {
       {/* 4. Rules & Payouts Modal */}
       {isRulesOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-amber-900/40 rounded-2xl max-w-lg w-full p-5 shadow-2xl relative max-h-[85vh] overflow-y-auto">
+          <div className="bg-zinc-900 border border-amber-900/40 rounded-2xl max-w-lg w-full p-5 shadow-2xl relative max-h-[85vh] overflow-y-auto custom-scrollbar">
             <button
               onClick={() => setIsRulesOpen(false)}
               className="absolute top-4 right-4 p-1 rounded-lg text-zinc-400 hover:text-white"

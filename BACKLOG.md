@@ -15,7 +15,7 @@
     - `NEXT_PUBLIC_FIREBASE_API_KEY`: Web API key from Firebase project settings.
     - `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`: Firebase auth domain (e.g. `your-app.firebaseapp.com`).
     - `NEXT_PUBLIC_FIREBASE_PROJECT_ID`: Firebase project ID.
-  - **Required for Pit Boss Owner Admin Access (`/admin` & `⌘⇧A`)**:
+  - **Required for Pit Boss Owner Admin Access**:
     - `ADMIN_EMAILS`: Server-side comma-separated owner email whitelist (e.g. `owner@example.com`).
     - `ADMIN_PASSCODE`: Server-side secret passcode for `/api/admin/verify` (never exposed in client JS bundles).
     - `NEXT_PUBLIC_ADMIN_EMAILS`: Client fallback whitelist (e.g. `owner@example.com`).
@@ -54,8 +54,9 @@
     - Standard player actions: **Hit**, **Stand**, **Double Down**, **Split**, and **Late Surrender**.
   - **Table Layout & UI**:
     - Authentic semicircular casino Blackjack felt layout fitting within Gambler's Den 16:9 responsive frame at `/blackjack`.
-    - Multi-hand betting spots (play up to 3 hands simultaneously against the dealer).
+    - Multi-hand betting spots (play up to 5 hands simultaneously against the dealer with customizable bot presets).
     - Physical 3D casino chip placement on betting circles with authentic chip sound synthesis.
+    - **Physical Card Dealing Engine (`Completed ✅`)**: Shared 2D physical card slide physics with authentic clockwise distribution from dealing shoe, felt friction audio (`whoosh`), dynamic elevation shadows, tactile landing snaps, relaxed casino pacing intervals, and Spacebar/click fast-forward.
   - **AI Strategy Advisor & Counting Drills**:
     - Real-time Basic Strategy Coach overlay (recommending Hit/Stand/Double/Split based on mathematical expectation).
     - Running count & True count card counting trainer mode (Hi-Lo system).
@@ -86,6 +87,30 @@
 ### 5. Multi-Game Casino Hub & Unified Bankroll
 - **Status**: `Completed ✅`
 - **Summary**: Top-level casino navigation hub allowing players to seamlessly switch between **Texas Hold'em Poker** (`/poker`), **Blackjack** (`/blackjack`), and **Roulette** (`/roulette`) while sharing a single persistent career bankroll and player profile in `playerProfileStorage`.
+
+---
+
+### 6. Shared Physical Card Dealing Engine Across Table Games
+- **Status**: `Completed ✅`
+- **Summary**: Modular, hardware-accelerated physical card sliding engine implemented in [`src/components/casino/`](file:///Users/kishorethamilvanan/Projects/gamblers-den/src/components/casino/) and integrated across both **Texas Hold'em Poker** (`/poker`) and **Blackjack** (`/blackjack`).
+- **Features**:
+  - Authentic clockwise multi-pass card distribution (starting left of dealer button in Poker, Spot 1 to Spot 5 in Blackjack).
+  - Street-by-street community card slides for Poker (Flop, Turn, River).
+  - Deliberate, unhurried casino pacing (~640ms–680ms per card interval in relaxed mode) with deceleration physics (`cubic-bezier(0.16, 1, 0.3, 1)`).
+  - Synthesized bandpass-filtered felt friction whoosh sound (`playCardSlide`) + tactile landing snap (`playCardSnap`).
+  - Spacebar and felt-click instant fast-forward without state race conditions.
+
+---
+
+### 7. Multi-Game Interactive Lobbies & 5-Session Persistence Engine
+- **Status**: `Completed ✅`
+- **Summary**: Unified session persistence and interactive pre-game lobbies across all casino table games (**Poker**, **Blackjack**, and **Roulette**).
+- **Features**:
+  - Generic storage engine in [`src/lib/sessions/sessionManager.ts`](file:///Users/kishorethamilvanan/Projects/gamblers-den/src/lib/sessions/sessionManager.ts) enforcing a strict 5-session cap (`MAX_SAVED_SESSIONS = 5`) per game with least-recently-played eviction.
+  - Interactive **Blackjack Lobby** (`BlackjackLobbyView.tsx`): 5-part configuration deck (Casual/Regular/VIP stakes, 1–5 spots, bot fill toggle, 6-deck vs 2-deck shoe, standard vs card counting drill) and saved session cards.
+  - Interactive **Roulette Lobby** (`RouletteLobbyView.tsx`): 4-part configuration deck (European vs American wheel, limits, 10s/15s/30s/Manual clock, session buy-in stack) and saved session cards with colored winning numbers pills.
+  - Live career bankroll synchronization: Table stacks track real-time wins/losses and update the player's profile vault.
+  - Standardized `[← Lobby]` return button in `TableTopBar` across all games.
 
 ---
 

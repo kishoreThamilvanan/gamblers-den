@@ -8,6 +8,8 @@
  * - Statistical analysis: Hot/Cold numbers, color frequency, column/dozen heatmaps
  */
 
+import { secureRandom } from '@/lib/casino/random';
+
 export type RouletteVariant = 'european' | 'american';
 
 export type PocketNumber = number | '00';
@@ -220,7 +222,7 @@ export function spinRoulette(
   seed?: number
 ): RoulettePocket {
   const pockets = variant === 'european' ? EUROPEAN_WHEEL_ORDER : AMERICAN_WHEEL_ORDER;
-  const rand = seed !== undefined ? pseudoRandom(seed) : Math.random();
+  const rand = seed !== undefined ? pseudoRandom(seed) : secureRandom();
   const pocketIndex = Math.floor(rand * pockets.length);
   return getPocketInfo(pockets[pocketIndex]);
 }

@@ -48,3 +48,16 @@ Whenever designing, modifying, or implementing new features in **Gambler's Den**
      2. **SonarQube Quality Standards**: Clean static analysis (`npm run lint` with 0 errors/0 warnings), 100% passing tests (`npm test`), and successful production build (`npm run build`).
      3. **PII & Secret Protection**: Zero hardcoded Personally Identifiable Information (real personal emails, phone numbers, real credentials, or unredacted user data). Never stage or commit `.env*` files or sensitive credentials.
 
+9. **Strict Owner Access & Admin Confidentiality**:
+   - Owner access, admin console existence, triggers, shortcuts, instructions, and credentials belong EXCLUSIVELY to the cardroom owner.
+   - **NEVER** display, describe, document, or instruct anyone on how to access, trigger, or unlock the owner admin console in public UI, public footers, client bundles, public documentation, or conversation outputs.
+   - All admin access mechanisms must remain strictly stealth, gated behind verified owner email whitelist, and completely invisible to regular players.
+
+10. **SonarQube & OWASP Top 10 Security Architecture Standards**:
+   - **Zero Hardcoded Secrets & PII (S2068 / CWE-798 / CWE-359)**: NEVER define fallback passcodes, API keys, credentials, or personal developer emails in code. Secrets must reside exclusively in server-side environment variables and fail closed if unconfigured.
+   - **Cryptographic Session Integrity (S3330 / CWE-384)**: Never issue static session cookie values (e.g. `'authenticated'`). All admin session tokens must be HMAC-SHA256 signed with expiration timestamps and validated using `crypto.timingSafeEqual`.
+   - **Cryptographically Secure Gaming PRNG (S2245 / CWE-330)**: All card deck shuffling (Poker, Blackjack) and wheel spins (Roulette) must use `secureRandom()` (`crypto.getRandomValues`). Never use `Math.random()` for authentication challenges or game fairness.
+   - **No Dynamic Code Injection (S2631 / CWE-94)**: Prohibit `eval()`, `new Function()`, and dynamic string script execution. For external browser ESM modules, use standard dynamic imports with `/* webpackIgnore: true */`.
+   - **Safe Storage Access**: Always guard `localStorage` with `if (typeof window === 'undefined' || typeof localStorage === 'undefined') return ...` to prevent runtime `ReferenceError` during SSR and test runner execution.
+
+

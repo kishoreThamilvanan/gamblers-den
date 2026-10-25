@@ -145,7 +145,7 @@ export function AICoachPanel({
       </div>
 
       {/* Main Body */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3 text-xs">
         {proactiveAdvice ? (
           <>
             {/* Primary Recommendation Card */}

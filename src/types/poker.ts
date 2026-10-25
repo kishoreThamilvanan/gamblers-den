@@ -81,9 +81,19 @@ export interface Player {
   avatarUrl?: string;
   isThinking?: boolean;
   lastAction?: PlayerActionBadge | null;
+  foldPhase?: Phase;
 }
 
 export type GameSpeed = 'relaxed' | 'normal' | 'fast';
+
+export type HandRank = number;
+
+export interface HeroPotentialHand {
+  name: string;
+  rank: HandRank;
+  wasFolded: boolean;
+  foldStreet?: Phase;
+}
 
 export interface HandResult {
   winnerNames: string;
@@ -93,6 +103,8 @@ export interface HandResult {
   isHeroWinner: boolean;
   byFold: boolean;
   winningCards?: Card[];
+  heroPotentialHand?: HeroPotentialHand;
+  wasRunout?: boolean;
 }
 
 export interface LeakEntry {
